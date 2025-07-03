@@ -64,14 +64,28 @@ The following features from the original Winix WAC6300 are not currently impleme
 
 These features may be added in future versions of the project.
 
-## Hardware Requirements
+## Technical Specifications
 
-- ESP32-C6 Supermini development board
-- PCA9685 16-channel PWM controller
-- Level shifter (3.3V to 5V) for fan PWM signal
-- Voltage divider for fan feedback signal
-- 5V power supply (can use from original board)
-- Connecting wires and connectors
+### Version Information
+- **Version**: 1.0
+- **Last Updated**: January 2025
+- **Platform**: ESP32-C6 with ESPHome
+
+### Hardware Requirements
+
+- **Microcontroller**: ESP32-C6 (Supermini form factor)
+- **PWM Controller**: PCA9685 16-channel PWM controller (I2C address 0x40)
+- **PWM Frequency**: 1kHz for LED control
+- **Level Shifter**: 3.3V to 5V bidirectional (8-channel recommended)
+- **Power Requirements**: 
+  - 5V from stock connector (Pin 4)
+  - 12V from stock connector (Pin 1) - not used by retrofit board
+  - 3.3V generated on-board for ESP32 and logic
+- **Additional Components**:
+  - Voltage divider for fan feedback signal (5V to 3.3V)
+  - 330Ω resistors for LED current limiting
+  - Pull-up resistors for button inputs (internal GPIO pull-ups used)
+  - WS2812 RGB status LED (optional)
 
 ## Wiring Diagram
 
@@ -500,21 +514,128 @@ automation:
 2. Check ESP32 is maintaining time properly
 3. Verify global variables are set to restore_value: yes
 
-## Development Notes
+## Technical Reference
 
-### Measured Values from Stock PCB
-- PWM Frequency: 3.910kHz
-- Fan Feedback Voltages:
-  - Level 1: 0.500V @ 22% duty
-  - Level 2: 0.810V @ 28% duty
-  - Level 3: 1.131V @ 38% duty
-  - Level 4: 2.000V @ 56% duty
+### GPIO Pin Assignments
 
-### Implementation Details
+#### ESP32-C6 GPIO Usage
+| GPIO | Function | Direction | Notes |
+|------|----------|-----------|-------|
+| GPIO0 | Level Shifter Output Enable | Output | Active High |
+| GPIO1 | Fan PWM Control | Output | 4kHz PWM signal → Stock Pin 7 |
+| GPIO2 | Ionizer Enable | Output | Active High → Stock Pin 2 |
+| GPIO3 | Mode Switch | Input | Pull-up, Active Low - Short: cycle speeds, Long: toggle ion |
+| GPIO4 | Filter Reset Switch | Input | Pull-up, Active Low - Short: clear LED, Long: reset timers |
+| GPIO6 | Fan Monitor ADC | Input | Voltage feedback from fan → Stock Pin 8 |
+| GPIO7 | Power Switch | Input | Pull-up, Active Low - Short: toggle fan, Long: dim LEDs, 30s: reboot |
+| GPIO8 | WS2812 RGB Status LED | Output | Data line for status LED |
+| GPIO14 | I2C SDA | I/O | PCA9685 communication |
+| GPIO15 | I2C SCL | Output | PCA9685 communication |
+| GPIO18 | PCA9685 Output Enable | Output | Active Low |
+
+#### Stock Connector to ESP32 Mapping
+| Stock Pin | Function | Voltage | ESP32 Connection |
+|-----------|----------|---------|------------------|
+| Pin 1 | 12V | 12V | Board power input (not used) |
+| Pin 2 | ION Enable | 5V | GPIO2 (via level shifter) |
+| Pin 3 | N/C | - | Not connected |
+| Pin 4 | 5V | 5V | Board 5V rail |
+| Pin 5 | GND | 0V | Board ground |
+| Pin 6 | N/C | - | Not connected |
+| Pin 7 | Fan PWM | 5V | GPIO1 (via level shifter) |
+| Pin 8 | Fan Speed Signal | 5V | GPIO6 (via voltage divider) |
+
+### PCA9685 Channel Assignments
+| Channel | LED Function | Color/Type |
+|---------|--------------|------------|
+| Ch0 | Auto Mode LED | Mode indicator |
+| Ch1 | Sleep Mode LED | Mode indicator |
+| Ch2 | Filter Change LED | Warning indicator |
+| Ch3 | Odor Level 5 LED | Air quality display |
+| Ch4 | Odor Level 4 LED | Air quality display |
+| Ch5 | Odor Level 3 LED | Air quality display |
+| Ch6 | Odor Level 2 LED | Air quality display |
+| Ch7 | Odor Level 1 LED | Air quality display |
+| Ch8 | Ionizer LED (Primary) | Status indicator |
+| Ch9 | Speed 1 LED | Speed display |
+| Ch10 | Speed 2 LED | Speed display |
+| Ch11 | Speed 3 LED | Speed display |
+| Ch12 | Speed 4 LED | Speed display |
+| Ch13 | Speed 5 LED | Speed display |
+| Ch14 | Ionizer LED 2 | Status indicator |
+| Ch15 | Ionizer LED 3 | Status indicator |
+
+### Fan Speed Configuration
+| Speed Setting | PWM Duty Cycle | Description |
+|---------------|----------------|-------------|
+| Speed 1 | 20% | Original purifier low speed |
+| Speed 2 | 28% | Original purifier medium-low |
+| Speed 3 | 38% | Original purifier medium-high |
+| Speed 4 | 54% | Original purifier high speed |
+| Sleep Mode | 10% | Ultra quiet operation |
+
+### Filter Life Settings
+- **Carbon Filter**: 90 days (3 months) - 7,776,000 seconds
+- **HEPA Filter**: 365 days (12 months) - 31,536,000 seconds
+- Runtime tracked only when fan is running
+- Automatic alerts when replacement needed
+
+### Development Notes
+
+#### Measured Values from Stock PCB
+- **PWM Frequency**: 3.910kHz (measured from original board)
+- **Fan Speed Feedback Voltages**:
+  - Level 1: 0.500V @ 22% duty cycle
+  - Level 2: 0.810V @ 28% duty cycle
+  - Level 3: 1.131V @ 38% duty cycle
+  - Level 4: 2.000V @ 56% duty cycle
+
+#### Implementation Details
 - Uses 4kHz PWM (close to stock 3.91kHz)
 - Duty cycles: 20%, 28%, 38%, 54% (optimized from measurements)
 - All LEDs use 1kHz PWM for smooth dimming
 - Transition effects on LEDs for professional appearance
+
+### Home Assistant Exposed Entities
+
+#### Fan & Speed Control
+- `fan.air_purifier_fan` - Main fan with 0-100% speed control
+- `select.preset_speeds` - Quick preset speed selector
+
+#### Switches
+- `switch.ionizer` - Ionizer on/off control
+- `switch.auto_mode` - Auto mode toggle
+- `switch.sleep_mode` - Sleep mode (auto-dims LEDs to 25%)
+- `switch.led_display` - Master LED display on/off
+
+#### Controls
+- `number.all_leds_brightness` - Global LED brightness (0-100%)
+- `number.odor_level_display` - Odor level indicator (0-5)
+
+#### Sensors
+- `sensor.fan_status` - Fan feedback percentage
+- `sensor.carbon_filter_life` - Carbon filter remaining %
+- `sensor.hepa_filter_life` - HEPA filter remaining %
+- `sensor.carbon_filter_days_remaining` - Days until replacement
+- `sensor.hepa_filter_days_remaining` - Days until replacement
+
+#### Binary Sensors
+- `binary_sensor.carbon_filter_needs_replacement` - Filter alert
+- `binary_sensor.hepa_filter_needs_replacement` - Filter alert
+- `binary_sensor.mode_switch` - Physical button state
+- `binary_sensor.filter_reset_switch` - Physical button state
+- `binary_sensor.power_switch` - Physical button state
+
+#### Actions
+- `button.reset_carbon_filter` - Reset carbon filter timer
+- `button.reset_hepa_filter` - Reset HEPA filter timer
+
+#### Lights (LED Controls)
+- `light.rgb_led` - RGB status LED
+- `light.auto_mode_led` - Auto mode indicator
+- `light.sleep_mode_led` - Sleep mode indicator
+- `light.filter_change_led` - Filter warning LED
+- `light.ion_led` - Ionizer status LED
 
 ## Contributing
 

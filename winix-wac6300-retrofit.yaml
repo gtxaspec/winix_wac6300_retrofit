@@ -1,56 +1,4 @@
-# Smart Air Purifier Controller - Winix WAC6300 Replacement Board
-# ================================================================
-# This ESPHome configuration is for a custom replacement control board for the
-# Winix WAC6300 Air Purifier, providing smart home integration while maintaining
-# all original functionality.
-#
-# Hardware:
-# - ESP32-C6 microcontroller (Supermini form factor)
-# - PCA9685 16-channel PWM controller for LED indicators
-# - Fan speed control with PWM (20%, 28%, 38%, 54% matching original speeds)
-# - Physical button controls (power, mode, filter reset)
-# - Ionizer control with triple LED indicators (channels 8, 14, 15)
-# - Multiple LED indicators for status, speed, and air quality
-#
-# Stock Connector Pinout (8-pin):
-# Pin 1: 12V (Power input)
-# Pin 2: ION Enable (To ionizer module)
-# Pin 3: N/C (Not connected)
-# Pin 4: 5V (Power output/input)
-# Pin 5: GND (Ground)
-# Pin 6: N/C (Not connected)
-# Pin 7: Fan PWM (Speed control to fan)
-# Pin 8: Fan Speed Signal (Feedback from fan)
-#
-# Features:
-# - 4 preset fan speeds matching original Winix WAC6300 speeds
-# - Progressive speed indicator LEDs (cumulative lighting)
-# - Smart power button: always turns on to last used speed (never just off)
-# - Mode button: short press cycles speeds, long press toggles ionizer
-# - Power button: short press toggles fan, long press dims/restores LEDs, 30s hold reboots
-# - Filter reset button: short press clears LED, long press (3s) resets all timers
-# - Boot sequence displays all LEDs for 1 second
-# - LED display auto-restores when unit powers on
-# - LED brightness resets to 100% on power cycle
-# - Sleep mode automatically dims all LEDs to 25%
-# - Filter life tracking: Carbon (90 days), HEPA (365 days)
-# - Full Home Assistant integration with extended controls
-#
-# Home Assistant Controls:
-# - Fan with speed control (0-100%)
-# - Individual mode switches (Auto, Sleep)
-# - Ionizer switch
-# - Global LED brightness control
-# - LED Display on/off switch
-# - Preset speed selector
-# - Filter status sensors and reset buttons
-# - Filter replacement notifications
-# - Odor level display
-#
-# Version: 1.0
-# Last Updated: January 2025
-
-# User custom packages for configuration
+# Winix WAC6300 Smart Air Purifier Retrofit Configuration
 packages:
   - !include common/common.yaml
   - !include common/supermini-esp32c6.yaml
@@ -63,11 +11,10 @@ esphome:
   name: thread-air-purifier-livingroom
   friendly_name: Livingroom Smart Air Purifier
   on_boot:
-    - priority: 600  # Very early, after hardware init but before component setup
+    - priority: 600
       then:
-        - output.turn_on: pca9685_oe  # Enable PCA9685 outputs
+        - output.turn_on: pca9685_oe
         - delay: 100ms
-        # Boot sequence - turn all LEDs on
         - light.turn_on:
             id: auto_mode_led
             brightness: 100%
@@ -117,7 +64,6 @@ esphome:
             id: odor_5_led
             brightness: 100%
         - delay: 1s
-        # Turn all LEDs off after boot display
         - light.turn_off: auto_mode_led
         - light.turn_off: sleep_mode_led
         - light.turn_off: filter_change_led
@@ -135,13 +81,10 @@ esphome:
         - light.turn_off: odor_4_led
         - light.turn_off: odor_5_led
         - logger.log: "Boot LED test complete"
-    - priority: -10  # Late, after all components are set up
+    - priority: -10
       then:
-        # Restore proper LED states after everything is initialized
         - lambda: |-
-            // Restore LEDs based on current system state
             if (!id(leds_dimmed)) {
-              // Restore mode LEDs first
               if (id(auto_mode_switch).state) {
                 id(auto_mode_led).turn_on().perform();
               }
@@ -149,14 +92,12 @@ esphome:
                 id(sleep_mode_led).turn_on().perform();
               }
               
-              // Restore ionizer LEDs
               if (id(ionizer_switch).state) {
                 id(ion_led).turn_on().perform();
                 id(ion_led_2).turn_on().perform();
                 id(ion_led_3).turn_on().perform();
               }
               
-              // Restore odor LEDs
               int odor_level = id(odor_level_display).state;
               if (odor_level >= 1) id(odor_1_led).turn_on().perform();
               if (odor_level >= 2) id(odor_2_led).turn_on().perform();
@@ -165,7 +106,6 @@ esphome:
               if (odor_level >= 5) id(odor_5_led).turn_on().perform();
             }
             
-            // Now restore fan state if it was on
             if (id(fan_was_on)) {
               auto call = id(air_purifier_fan).turn_on();
               call.set_speed(id(last_fan_speed));
@@ -174,15 +114,12 @@ esphome:
             }
             
             ESP_LOGI("boot", "System state restored");
-        # Check filter status after boot
         - script.execute: check_filter_status
 
-# External component for ESP32-C6 ADC support
 external_components:
   - source: github://PhracturedBlue/c6_adc
     refresh: 0s
 
-# Global variables for LED state tracking
 globals:
   - id: leds_dimmed
     type: bool
@@ -200,7 +137,6 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
-  # Filter runtime tracking (in seconds)
   - id: carbon_filter_runtime
     type: int
     restore_value: yes
@@ -209,33 +145,27 @@ globals:
     type: int
     restore_value: yes
     initial_value: '0'
-  # Last fan speed memory
   - id: last_fan_speed
     type: int
     restore_value: yes
-    initial_value: '20'  # Default to Speed 1 (20%)
-  # Fan state memory for boot restore
+    initial_value: '20'
   - id: fan_was_on
     type: bool
     restore_value: yes
     initial_value: 'false'
 
-# I2C bus for PCA9685
 i2c:
   sda: GPIO14
   scl: GPIO15
   scan: true
   id: bus_a
 
-# PCA9685 PWM controller
 pca9685:
   - id: pca9685_hub
-    address: 0x40  # Default address, change if needed
-    frequency: 1000Hz  # Good for LED dimming
+    address: 0x40
+    frequency: 1000Hz
 
-# Outputs
 output:
-  # Level shifter output enable (GPIO0)
   - platform: gpio
     pin: 
       number: GPIO0
@@ -243,14 +173,12 @@ output:
         output: true
     id: level_shifter_oe
     
-  # Fan speed control PWM (GPIO1)
   - platform: ledc
     pin: GPIO1
     id: fan_control_pwm
     frequency: 4000Hz
     channel: 0
     
-  # ION Enable (GPIO2)
   - platform: gpio
     pin:
       number: GPIO2
@@ -258,16 +186,14 @@ output:
         output: true
     id: ion_enable
     
-  # PCA9685 Output Enable (GPIO18) - Active LOW
   - platform: gpio
     pin:
       number: GPIO18
       mode:
         output: true
-      inverted: true  # OE is active LOW
+      inverted: true  # Active LOW
     id: pca9685_oe
 
-  # PCA9685 LED outputs (matching actual wiring)
   - platform: pca9685
     id: led_auto
     channel: 0
@@ -349,9 +275,7 @@ output:
     channel: 15
     pca9685_id: pca9685_hub
 
-# LED Lights for control
 light:
-  # RGB Status LED
   - platform: esp32_rmt_led_strip
     rgb_order: GRB
     pin: GPIO8
@@ -362,7 +286,6 @@ light:
     default_transition_length: 0s
     color_correct: [100%, 100%, 100%]
     
-  # Individual LED controls
   - platform: monochromatic
     name: "Auto Mode LED"
     output: led_auto
@@ -482,9 +405,7 @@ light:
     internal: true
     default_transition_length: 300ms
 
-# Binary Sensors for switches and filter status
 binary_sensor:
-  # Filter replacement needed sensors
   - platform: template
     name: "Carbon Filter Needs Replacement"
     id: carbon_filter_alert
@@ -831,9 +752,7 @@ binary_sensor:
           - delay: 5s
           - button.press: restart_button
 
-# Sensors
 sensor:
-  # Fan motor feedback ADC (GPIO6) using C6 ADC
   - platform: c6_adc
     pin: GPIO6
     name: "Fan Monitor Voltage"
@@ -852,14 +771,11 @@ sensor:
       float voltage = id(fan_monitor).state;
       if (isnan(voltage)) return 0;
       
-      // Assuming similar behavior: higher voltage = off, lower = running
-      // Adjust these thresholds based on actual readings
       if (voltage > 2.5) {
-        return 0;  // Fan is off
+        return 0;
       } else if (voltage < 1.2) {
-        return 100;  // Fan at full speed  
+        return 100;
       } else {
-        // Linear interpolation
         float percent = (2.5 - voltage) / (2.5 - 1.2) * 100;
         if (percent < 0) percent = 0;
         if (percent > 100) percent = 100;
@@ -870,12 +786,10 @@ sensor:
     update_interval: 1s
     icon: "mdi:fan"
     
-  # Filter lifetime sensors
   - platform: template
     name: "Carbon Filter Life"
     id: carbon_filter_life
     lambda: |-
-      // Carbon filter: 3 months = 90 days = 7,776,000 seconds
       const int carbon_filter_lifetime = 7776000;
       int remaining = carbon_filter_lifetime - id(carbon_filter_runtime);
       if (remaining < 0) remaining = 0;
@@ -890,7 +804,6 @@ sensor:
     name: "HEPA Filter Life"
     id: hepa_filter_life
     lambda: |-
-      // HEPA filter: 12 months = 365 days = 31,536,000 seconds
       const int hepa_filter_lifetime = 31536000;
       int remaining = hepa_filter_lifetime - id(hepa_filter_runtime);
       if (remaining < 0) remaining = 0;
@@ -901,7 +814,6 @@ sensor:
     update_interval: 60s
     icon: "mdi:air-filter"
     
-  # Days remaining sensors
   - platform: template
     name: "Carbon Filter Days Remaining"
     lambda: |-
@@ -926,41 +838,33 @@ sensor:
     update_interval: 60s
     icon: "mdi:calendar-clock"
 
-# Script to update speed LEDs
 script:
   - id: update_speed_leds
     then:
       - lambda: |-
-          // Turn off all speed LEDs first
           id(speed_1_led).turn_off().perform();
           id(speed_2_led).turn_off().perform();
           id(speed_3_led).turn_off().perform();
           id(speed_4_led).turn_off().perform();
           id(speed_5_led).turn_off().perform();
           
-          // Don't update if LEDs are dimmed or fan is off
           if (id(leds_dimmed) || !id(air_purifier_fan).state) return;
           
           int speed = id(air_purifier_fan).speed;
           
-          // Progressive LED lighting based on speed
           if (speed > 0) {
-            // Always light LED 1 if fan is on
             id(speed_1_led).turn_on().perform();
           }
           
           if (speed >= 28) {
-            // Speed 2 or higher: light LEDs 1 & 2
             id(speed_2_led).turn_on().perform();
           }
           
           if (speed >= 38) {
-            // Speed 3 or higher: light LEDs 1, 2 & 3
             id(speed_3_led).turn_on().perform();
           }
           
           if (speed >= 54) {
-            // Speed 4 or higher: light LEDs 1, 2, 3, 4 & 5
             id(speed_4_led).turn_on().perform();
             id(speed_5_led).turn_on().perform();
           }
@@ -970,14 +874,12 @@ script:
       level: int
     then:
       - lambda: |-
-          // Turn off all odor LEDs first
           id(odor_1_led).turn_off().perform();
           id(odor_2_led).turn_off().perform();
           id(odor_3_led).turn_off().perform();
           id(odor_4_led).turn_off().perform();
           id(odor_5_led).turn_off().perform();
           
-          // Light up LEDs based on level
           if (level >= 1) id(odor_1_led).turn_on().perform();
           if (level >= 2) id(odor_2_led).turn_on().perform();
           if (level >= 3) id(odor_3_led).turn_on().perform();
@@ -987,7 +889,6 @@ script:
   - id: check_filter_status
     then:
       - lambda: |-
-          // Check if either filter needs replacement
           const int carbon_filter_lifetime = 7776000;  // 90 days
           const int hepa_filter_lifetime = 31536000;   // 365 days
           
@@ -995,32 +896,28 @@ script:
           bool hepa_expired = id(hepa_filter_runtime) >= hepa_filter_lifetime;
           
           if (carbon_expired || hepa_expired) {
-            // Turn on filter change LED if not already on
             if (!id(filter_change_led).current_values.is_on() && !id(leds_dimmed)) {
               id(filter_change_led).turn_on().perform();
             }
           }
 
-# Runtime tracking interval
 interval:
   - interval: 1s
     then:
       - lambda: |-
-          // Only count runtime when fan is actually running
           if (id(air_purifier_fan).state && id(air_purifier_fan).speed > 0) {
             id(carbon_filter_runtime) += 1;
             id(hepa_filter_runtime) += 1;
           }
       - script.execute: check_filter_status
 
-# Fan component with measured duty cycles
 fan:
   - platform: speed
     output: fan_control_pwm
     name: "Air Purifier Fan"
     id: air_purifier_fan
-    speed_count: 100  # Allow 100 speed levels (0-100%)
-    restore_mode: ALWAYS_OFF  # Don't auto-restore, we'll handle it manually
+    speed_count: 100
+    restore_mode: ALWAYS_OFF
     on_turn_on:
       - output.turn_on: level_shifter_oe
       - light.turn_on:
@@ -1029,12 +926,9 @@ fan:
           red: 0%
           green: 100%
           blue: 0%
-      # Reset LED dimmed state and brightness when fan turns on
       - lambda: |-
           id(leds_dimmed) = false;
-          // Reset global brightness to 100%
           id(global_led_brightness).publish_state(100);
-          // Remember fan is on
           id(fan_was_on) = true;
       - script.execute: update_speed_leds
       - logger.log: "Fan turned ON - LED brightness reset to 100%"
@@ -1044,31 +938,25 @@ fan:
           id: fan_control_pwm
           level: 0
       - light.turn_off: status_led
-      # Reset LED dimmed state when fan turns off
       - lambda: |-
           id(leds_dimmed) = false;
-          // Remember fan is off
           id(fan_was_on) = false;
       - script.execute: update_speed_leds
       - logger.log: "Fan turned OFF"
     on_speed_set:
       - lambda: |-
-          // Direct percentage control (0-100)
           int speed = id(air_purifier_fan).speed;
           float pwm_level = speed / 100.0;
           
           id(fan_control_pwm).set_level(pwm_level);
           ESP_LOGD("fan", "Speed set to %d percent", speed);
           
-          // Remember this speed for next power on (only if > 0)
           if (speed > 0) {
             id(last_fan_speed) = speed;
           }
       - script.execute: update_speed_leds
 
-# Controls
 switch:
-  # ION control
   - platform: template
     name: "Ionizer"
     id: ionizer_switch
@@ -1088,7 +976,6 @@ switch:
       - light.turn_off: ion_led_3
       - logger.log: "Ionizer turned OFF"
       
-  # Auto mode
   - platform: template
     name: "Auto Mode"
     id: auto_mode_switch
@@ -1102,7 +989,6 @@ switch:
       - light.turn_off: auto_mode_led
       - logger.log: "Auto mode turned OFF"
       
-  # Sleep mode
   - platform: template
     name: "Sleep Mode"
     id: sleep_mode_switch
@@ -1307,7 +1193,6 @@ switch:
           
           ESP_LOGD("sleep", "LED brightness restored to %.0f%%", id(global_led_brightness).state);
       
-  # LED Display Toggle
   - platform: template
     name: "LED Display"
     id: led_display_switch
@@ -1360,7 +1245,6 @@ switch:
           }
 
 number:
-  # Odor level display
   - platform: template
     name: "Odor Level Display"
     id: odor_level_display
@@ -1376,7 +1260,6 @@ number:
             id: update_odor_leds
             level: !lambda 'return (int)x;'
             
-  # Global LED brightness control
   - platform: template
     name: "All LEDs Brightness"
     id: global_led_brightness
@@ -1392,7 +1275,6 @@ number:
         - lambda: |-
             float brightness = x / 100.0;
             
-            // Update all LED brightnesses
             auto call = id(auto_mode_led).make_call();
             call.set_brightness(brightness);
             call.perform();
@@ -1459,7 +1341,6 @@ number:
             
             ESP_LOGD("leds", "Set all LED brightness to %.0f%%", x);
 
-# Preset speeds for convenience
 select:
   - platform: template
     name: "Preset Speeds"
@@ -1518,7 +1399,6 @@ select:
               call.perform();
             }
 
-# Filter reset buttons for Home Assistant
 button:
   - platform: template
     name: "Reset Carbon Filter"
@@ -1545,89 +1425,3 @@ button:
     id: restart_button
     internal: true
 
-# GPIO Pin Summary
-# ================
-# ESP32-C6 GPIO Assignments:
-# GPIO0  - Level Shifter Output Enable (Active High)
-# GPIO1  - Fan PWM Control (4kHz PWM signal) → Stock Pin 7
-# GPIO2  - Ionizer Enable (Active High) → Stock Pin 2
-# GPIO3  - Mode Switch (Input, Pull-up, Active Low) - Short: cycle speeds, Long: toggle ion
-# GPIO4  - Filter Reset Switch (Input, Pull-up, Active Low) - Short: clear LED, Long: reset timers
-# GPIO6  - Fan Monitor ADC (Voltage feedback from fan) → Stock Pin 8
-# GPIO7  - Power Switch (Input, Pull-up, Active Low) - Short: toggle fan, Long: dim LEDs, 30s: reboot
-# GPIO8  - WS2812 RGB Status LED (Data line)
-# GPIO14 - I2C SDA (PCA9685 communication)
-# GPIO15 - I2C SCL (PCA9685 communication)
-# GPIO18 - PCA9685 Output Enable (Active Low)
-#
-# Stock Connector Mapping:
-# Stock Pin 1 (12V) → Board power input
-# Stock Pin 2 (ION Enable) → GPIO2
-# Stock Pin 3 (N/C) → Not used
-# Stock Pin 4 (5V) → Board 5V rail
-# Stock Pin 5 (GND) → Board ground
-# Stock Pin 6 (N/C) → Not used
-# Stock Pin 7 (Fan PWM) → GPIO1 (via level shifter)
-# Stock Pin 8 (Fan Speed Signal) → GPIO6 (via voltage divider)
-#
-# PCA9685 Channel Assignments:
-# Ch0  - Auto Mode LED
-# Ch1  - Sleep Mode LED
-# Ch2  - Filter Change LED
-# Ch3  - Odor Level 5 LED
-# Ch4  - Odor Level 4 LED
-# Ch5  - Odor Level 3 LED
-# Ch6  - Odor Level 2 LED
-# Ch7  - Odor Level 1 LED
-# Ch8  - Ionizer LED (Primary)
-# Ch9  - Speed 1 LED
-# Ch10 - Speed 2 LED
-# Ch11 - Speed 3 LED
-# Ch12 - Speed 4 LED
-# Ch13 - Speed 5 LED
-# Ch14 - Ionizer LED 2
-# Ch15 - Ionizer LED 3
-#
-# Fan Speed Settings:
-# Speed 1: 20% PWM (Original purifier low speed)
-# Speed 2: 28% PWM (Original purifier medium-low)
-# Speed 3: 38% PWM (Original purifier medium-high)
-# Speed 4: 54% PWM (Original purifier high speed)
-# Sleep Mode: 10% PWM (Ultra quiet)
-#
-# Development Notes - Stock PCB Measurements:
-# PWM Frequency: 3.910kHz (measured from original board)
-# Fan Speed Feedback Voltages vs PWM Duty Cycles:
-# Level 1: 0.500V @ 22% duty cycle
-# Level 2: 0.810V @ 28% duty cycle
-# Level 3: 1.131V @ 38% duty cycle
-# Level 4: 2.000V @ 56% duty cycle
-# Note: Our implementation uses 4kHz PWM (close to stock)
-#       and duty cycles of 20%, 28%, 38%, 54% based on testing
-#
-# Filter Life Settings:
-# Carbon Filter: 90 days (3 months)
-# HEPA Filter: 365 days (12 months)
-# Runtime tracked only when fan is running
-#
-# Home Assistant Exposed Entities:
-# - Air Purifier Fan (with 0-100% speed control)
-# - Ionizer Switch
-# - Auto Mode Switch
-# - Sleep Mode Switch (auto-dims LEDs to 25%)
-# - LED Display Switch (on/off all LEDs)
-# - All LEDs Brightness (0-100%)
-# - Odor Level Display (0-5)
-# - Preset Speed Selector
-# - Carbon Filter Life % / Days Remaining
-# - HEPA Filter Life % / Days Remaining
-# - Carbon Filter Needs Replacement (binary)
-# - HEPA Filter Needs Replacement (binary)
-# - Reset Carbon Filter (button)
-# - Reset HEPA Filter (button)
-# - Mode Switch Button (from physical button)
-# - Filter Reset Switch Button (from physical button)
-# - Power Switch Button (from physical button)
-# - Fan Status Sensor (feedback %)
-# - Auto/Sleep/Filter/Ion Mode LED entities
-# - RGB Status LED
