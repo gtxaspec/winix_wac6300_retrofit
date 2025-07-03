@@ -1,0 +1,1549 @@
+# Smart Air Purifier Controller - Winix WAC6300 Replacement Board
+# ================================================================
+# This ESPHome configuration is for a custom replacement control board for the
+# Winix WAC6300 Air Purifier, providing smart home integration while maintaining
+# all original functionality.
+#
+# Hardware:
+# - ESP32-C6 microcontroller (Supermini form factor)
+# - PCA9685 16-channel PWM controller for LED indicators
+# - Fan speed control with PWM (20%, 28%, 38%, 54% matching original speeds)
+# - Physical button controls (power, mode, filter reset)
+# - Ionizer control with triple LED indicators (channels 8, 14, 15)
+# - Multiple LED indicators for status, speed, and air quality
+#
+# Stock Connector Pinout (8-pin):
+# Pin 1: 12V (Power input)
+# Pin 2: ION Enable (To ionizer module)
+# Pin 3: N/C (Not connected)
+# Pin 4: 5V (Power output/input)
+# Pin 5: GND (Ground)
+# Pin 6: N/C (Not connected)
+# Pin 7: Fan PWM (Speed control to fan)
+# Pin 8: Fan Speed Signal (Feedback from fan)
+#
+# Features:
+# - 4 preset fan speeds matching original Winix WAC6300 speeds
+# - Progressive speed indicator LEDs (cumulative lighting)
+# - Smart power button: always turns on to last used speed (never just off)
+# - Mode button: short press cycles speeds, long press toggles ionizer
+# - Power button: short press toggles fan, long press dims/restores LEDs
+# - Filter reset button: short press clears LED, long press (3s) resets all timers
+# - Boot sequence displays all LEDs for 1 second
+# - LED display auto-restores when unit powers on
+# - LED brightness resets to 100% on power cycle
+# - Sleep mode automatically dims all LEDs to 25%
+# - Filter life tracking: Carbon (90 days), HEPA (365 days)
+# - Full Home Assistant integration with extended controls
+#
+# Home Assistant Controls:
+# - Fan with speed control (0-100%)
+# - Individual mode switches (Auto, Sleep)
+# - Ionizer switch
+# - Global LED brightness control
+# - LED Display on/off switch
+# - Preset speed selector
+# - Filter status sensors and reset buttons
+# - Filter replacement notifications
+# - Odor level display
+#
+# Version: 1.0
+# Last Updated: January 2025
+
+# User custom packages for configuration
+packages:
+  - !include common/common.yaml
+  - !include common/supermini-esp32c6.yaml
+  - !include common/common-wifi.yaml
+
+wifi:
+  output_power: 16
+
+esphome:
+  name: thread-air-purifier-livingroom
+  friendly_name: Livingroom Smart Air Purifier
+  on_boot:
+    - priority: 600  # Very early, after hardware init but before component setup
+      then:
+        - output.turn_on: pca9685_oe  # Enable PCA9685 outputs
+        - delay: 100ms
+        # Boot sequence - turn all LEDs on
+        - light.turn_on:
+            id: auto_mode_led
+            brightness: 100%
+        - light.turn_on:
+            id: sleep_mode_led
+            brightness: 100%
+        - light.turn_on:
+            id: filter_change_led
+            brightness: 100%
+        - light.turn_on:
+            id: speed_1_led
+            brightness: 100%
+        - light.turn_on:
+            id: speed_2_led
+            brightness: 100%
+        - light.turn_on:
+            id: speed_3_led
+            brightness: 100%
+        - light.turn_on:
+            id: speed_4_led
+            brightness: 100%
+        - light.turn_on:
+            id: speed_5_led
+            brightness: 100%
+        - light.turn_on:
+            id: ion_led
+            brightness: 100%
+        - light.turn_on:
+            id: ion_led_2
+            brightness: 100%
+        - light.turn_on:
+            id: ion_led_3
+            brightness: 100%
+        - light.turn_on:
+            id: odor_1_led
+            brightness: 100%
+        - light.turn_on:
+            id: odor_2_led
+            brightness: 100%
+        - light.turn_on:
+            id: odor_3_led
+            brightness: 100%
+        - light.turn_on:
+            id: odor_4_led
+            brightness: 100%
+        - light.turn_on:
+            id: odor_5_led
+            brightness: 100%
+        - delay: 1s
+        # Turn all LEDs off after boot display
+        - light.turn_off: auto_mode_led
+        - light.turn_off: sleep_mode_led
+        - light.turn_off: filter_change_led
+        - light.turn_off: speed_1_led
+        - light.turn_off: speed_2_led
+        - light.turn_off: speed_3_led
+        - light.turn_off: speed_4_led
+        - light.turn_off: speed_5_led
+        - light.turn_off: ion_led
+        - light.turn_off: ion_led_2
+        - light.turn_off: ion_led_3
+        - light.turn_off: odor_1_led
+        - light.turn_off: odor_2_led
+        - light.turn_off: odor_3_led
+        - light.turn_off: odor_4_led
+        - light.turn_off: odor_5_led
+        - logger.log: "Boot LED test complete"
+    - priority: -10  # Late, after all components are set up
+      then:
+        # Restore proper LED states after everything is initialized
+        - lambda: |-
+            // Restore LEDs based on current system state
+            if (!id(leds_dimmed)) {
+              // Restore mode LEDs first
+              if (id(auto_mode_switch).state) {
+                id(auto_mode_led).turn_on().perform();
+              }
+              if (id(sleep_mode_switch).state) {
+                id(sleep_mode_led).turn_on().perform();
+              }
+              
+              // Restore ionizer LEDs
+              if (id(ionizer_switch).state) {
+                id(ion_led).turn_on().perform();
+                id(ion_led_2).turn_on().perform();
+                id(ion_led_3).turn_on().perform();
+              }
+              
+              // Restore odor LEDs
+              int odor_level = id(odor_level_display).state;
+              if (odor_level >= 1) id(odor_1_led).turn_on().perform();
+              if (odor_level >= 2) id(odor_2_led).turn_on().perform();
+              if (odor_level >= 3) id(odor_3_led).turn_on().perform();
+              if (odor_level >= 4) id(odor_4_led).turn_on().perform();
+              if (odor_level >= 5) id(odor_5_led).turn_on().perform();
+            }
+            
+            // Now restore fan state if it was on
+            if (id(fan_was_on)) {
+              auto call = id(air_purifier_fan).turn_on();
+              call.set_speed(id(last_fan_speed));
+              call.perform();
+              ESP_LOGI("boot", "Restored fan to %d%% speed", id(last_fan_speed));
+            }
+            
+            ESP_LOGI("boot", "System state restored");
+        # Check filter status after boot
+        - script.execute: check_filter_status
+
+# External component for ESP32-C6 ADC support
+external_components:
+  - source: github://PhracturedBlue/c6_adc
+    refresh: 0s
+
+# Global variables for LED state tracking
+globals:
+  - id: leds_dimmed
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: mode_long_press_triggered
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: power_long_press_triggered
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: filter_long_press_triggered
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  # Filter runtime tracking (in seconds)
+  - id: carbon_filter_runtime
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: hepa_filter_runtime
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  # Last fan speed memory
+  - id: last_fan_speed
+    type: int
+    restore_value: yes
+    initial_value: '20'  # Default to Speed 1 (20%)
+  # Fan state memory for boot restore
+  - id: fan_was_on
+    type: bool
+    restore_value: yes
+    initial_value: 'false'
+
+# I2C bus for PCA9685
+i2c:
+  sda: GPIO14
+  scl: GPIO15
+  scan: true
+  id: bus_a
+
+# PCA9685 PWM controller
+pca9685:
+  - id: pca9685_hub
+    address: 0x40  # Default address, change if needed
+    frequency: 1000Hz  # Good for LED dimming
+
+# Outputs
+output:
+  # Level shifter output enable (GPIO0)
+  - platform: gpio
+    pin: 
+      number: GPIO0
+      mode:
+        output: true
+    id: level_shifter_oe
+    
+  # Fan speed control PWM (GPIO1)
+  - platform: ledc
+    pin: GPIO1
+    id: fan_control_pwm
+    frequency: 4000Hz
+    channel: 0
+    
+  # ION Enable (GPIO2)
+  - platform: gpio
+    pin:
+      number: GPIO2
+      mode:
+        output: true
+    id: ion_enable
+    
+  # PCA9685 Output Enable (GPIO18) - Active LOW
+  - platform: gpio
+    pin:
+      number: GPIO18
+      mode:
+        output: true
+      inverted: true  # OE is active LOW
+    id: pca9685_oe
+
+  # PCA9685 LED outputs (matching actual wiring)
+  - platform: pca9685
+    id: led_auto
+    channel: 0
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_sleep
+    channel: 1
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_filter_change
+    channel: 2
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_odor_5
+    channel: 3
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_odor_4
+    channel: 4
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_odor_3
+    channel: 5
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_odor_2
+    channel: 6
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_odor_1
+    channel: 7
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_ion
+    channel: 8
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_speed_1
+    channel: 9
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_speed_2
+    channel: 10
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_speed_3
+    channel: 11
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_speed_4
+    channel: 12
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_speed_5
+    channel: 13
+    pca9685_id: pca9685_hub
+    
+  # Additional ION LED outputs on channels 14 and 15
+  - platform: pca9685
+    id: led_ion_2
+    channel: 14
+    pca9685_id: pca9685_hub
+    
+  - platform: pca9685
+    id: led_ion_3
+    channel: 15
+    pca9685_id: pca9685_hub
+
+# LED Lights for control
+light:
+  # RGB Status LED
+  - platform: esp32_rmt_led_strip
+    rgb_order: GRB
+    pin: GPIO8
+    num_leds: 1
+    chipset: ws2812
+    name: "RGB LED"
+    id: status_led
+    default_transition_length: 0s
+    color_correct: [100%, 100%, 100%]
+    
+  # Individual LED controls
+  - platform: monochromatic
+    name: "Auto Mode LED"
+    output: led_auto
+    id: auto_mode_led
+    default_transition_length: 500ms
+    
+  - platform: monochromatic
+    name: "Sleep Mode LED"
+    output: led_sleep
+    id: sleep_mode_led
+    default_transition_length: 500ms
+    
+  - platform: monochromatic
+    name: "Filter Change LED"
+    output: led_filter_change
+    id: filter_change_led
+    default_transition_length: 500ms
+    effects:
+      - pulse:
+          name: "Warning Pulse"
+          transition_length: 1s
+          update_interval: 2s
+    
+  - platform: monochromatic
+    name: "Speed 1 LED"
+    output: led_speed_1
+    id: speed_1_led
+    internal: true
+    default_transition_length: 200ms
+    
+  - platform: monochromatic
+    name: "Speed 2 LED"
+    output: led_speed_2
+    id: speed_2_led
+    internal: true
+    default_transition_length: 200ms
+    
+  - platform: monochromatic
+    name: "Speed 3 LED"
+    output: led_speed_3
+    id: speed_3_led
+    internal: true
+    default_transition_length: 200ms
+    
+  - platform: monochromatic
+    name: "Speed 4 LED"
+    output: led_speed_4
+    id: speed_4_led
+    internal: true
+    default_transition_length: 200ms
+    
+  - platform: monochromatic
+    name: "Speed 5 LED"
+    output: led_speed_5
+    id: speed_5_led
+    internal: true
+    default_transition_length: 200ms
+    
+  - platform: monochromatic
+    name: "Ion LED"
+    output: led_ion
+    id: ion_led
+    default_transition_length: 300ms
+    on_turn_on:
+      - light.turn_on: ion_led_2
+      - light.turn_on: ion_led_3
+    on_turn_off:
+      - light.turn_off: ion_led_2
+      - light.turn_off: ion_led_3
+    
+  - platform: monochromatic
+    name: "Ion LED 2"
+    output: led_ion_2
+    id: ion_led_2
+    internal: true
+    default_transition_length: 300ms
+    
+  - platform: monochromatic
+    name: "Ion LED 3"
+    output: led_ion_3
+    id: ion_led_3
+    internal: true
+    default_transition_length: 300ms
+    
+  - platform: monochromatic
+    name: "Odor 1 LED"
+    output: led_odor_1
+    id: odor_1_led
+    internal: true
+    default_transition_length: 300ms
+    
+  - platform: monochromatic
+    name: "Odor 2 LED"
+    output: led_odor_2
+    id: odor_2_led
+    internal: true
+    default_transition_length: 300ms
+    
+  - platform: monochromatic
+    name: "Odor 3 LED"
+    output: led_odor_3
+    id: odor_3_led
+    internal: true
+    default_transition_length: 300ms
+    
+  - platform: monochromatic
+    name: "Odor 4 LED"
+    output: led_odor_4
+    id: odor_4_led
+    internal: true
+    default_transition_length: 300ms
+    
+  - platform: monochromatic
+    name: "Odor 5 LED"
+    output: led_odor_5
+    id: odor_5_led
+    internal: true
+    default_transition_length: 300ms
+
+# Binary Sensors for switches and filter status
+binary_sensor:
+  # Filter replacement needed sensors
+  - platform: template
+    name: "Carbon Filter Needs Replacement"
+    id: carbon_filter_alert
+    device_class: problem
+    lambda: |-
+      const int carbon_filter_lifetime = 7776000;  // 90 days
+      return id(carbon_filter_runtime) >= carbon_filter_lifetime;
+      
+  - platform: template
+    name: "HEPA Filter Needs Replacement"
+    id: hepa_filter_alert
+    device_class: problem
+    lambda: |-
+      const int hepa_filter_lifetime = 31536000;  // 365 days
+      return id(hepa_filter_runtime) >= hepa_filter_lifetime;
+      
+  # Mode Switch (GPIO3)
+  - platform: gpio
+    pin:
+      number: GPIO3
+      mode:
+        input: true
+        pullup: true
+      inverted: true  # Trigger when grounded
+    name: "Mode Switch"
+    id: sw1
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+    on_press:
+      then:
+        - logger.log: "Mode switch pressed!"
+    on_release:
+      then:
+        - lambda: |-
+            // Only cycle speeds if it wasn't a long press
+            if (!id(mode_long_press_triggered)) {
+              // Cycle through original speeds: Off -> 20% -> 28% -> 38% -> 54% -> Off
+              if (!id(air_purifier_fan).state) {
+                // Fan is off, turn on at speed 1 (20%)
+                auto call = id(air_purifier_fan).turn_on();
+                call.set_speed(20);
+                call.perform();
+                id(last_fan_speed) = 20;
+              } else {
+                int current_speed = id(air_purifier_fan).speed;
+                if (current_speed <= 20) {
+                  // Speed 1 -> Speed 2
+                  auto call = id(air_purifier_fan).turn_on();
+                  call.set_speed(28);
+                  call.perform();
+                  id(last_fan_speed) = 28;
+                } else if (current_speed <= 28) {
+                  // Speed 2 -> Speed 3
+                  auto call = id(air_purifier_fan).turn_on();
+                  call.set_speed(38);
+                  call.perform();
+                  id(last_fan_speed) = 38;
+                } else if (current_speed <= 38) {
+                  // Speed 3 -> Speed 4
+                  auto call = id(air_purifier_fan).turn_on();
+                  call.set_speed(54);
+                  call.perform();
+                  id(last_fan_speed) = 54;
+                } else {
+                  // Speed 4 or higher -> Off
+                  id(air_purifier_fan).turn_off().perform();
+                }
+              }
+            }
+            // Reset the flag
+            id(mode_long_press_triggered) = false;
+    on_multi_click:
+      - timing:
+          - ON for at least 1000ms
+        then:
+          - lambda: |-
+              id(mode_long_press_triggered) = true;
+          - logger.log: "Mode switch long pressed - toggling ionizer"
+          - switch.toggle: ionizer_switch
+    
+  # Filter Reset Switch (GPIO4)
+  - platform: gpio
+    pin:
+      number: GPIO4
+      mode:
+        input: true
+        pullup: true
+      inverted: true  # Trigger when grounded
+    name: "Filter Reset Switch"
+    id: sw2
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+    on_press:
+      then:
+        - logger.log: "Filter reset pressed!"
+    on_release:
+      then:
+        - lambda: |-
+            // Only turn off LED if it wasn't a long press
+            if (!id(filter_long_press_triggered)) {
+              // Short press just turns off the LED temporarily
+              id(filter_change_led).turn_off().perform();
+              ESP_LOGD("filter", "Filter LED turned off temporarily");
+            }
+            // Reset the flag
+            id(filter_long_press_triggered) = false;
+    on_multi_click:
+      - timing:
+          - ON for at least 3000ms
+        then:
+          - lambda: |-
+              id(filter_long_press_triggered) = true;
+          - logger.log: "Filter reset long pressed - resetting all filter timers"
+          # Visual feedback - blink the filter LED
+          - light.turn_on:
+              id: filter_change_led
+              brightness: 100%
+          - delay: 200ms
+          - light.turn_off: filter_change_led
+          - delay: 200ms
+          - light.turn_on:
+              id: filter_change_led
+              brightness: 100%
+          - delay: 200ms
+          - light.turn_off: filter_change_led
+          - delay: 200ms
+          - light.turn_on:
+              id: filter_change_led
+              brightness: 100%
+          - delay: 200ms
+          - light.turn_off: filter_change_led
+          # Reset both filter timers
+          - button.press: reset_carbon_filter
+          - button.press: reset_hepa_filter
+          - logger.log: "Filter timers reset complete"
+    
+  # Power Switch (GPIO7)
+  - platform: gpio
+    pin:
+      number: GPIO7
+      mode:
+        input: true
+        pullup: true
+      inverted: true  # Trigger when grounded
+    name: "Power Switch"
+    id: sw3
+    filters:
+      - delayed_on: 10ms
+      - delayed_off: 10ms
+    on_press:
+      then:
+        - logger.log: "Power switch pressed!"
+    on_release:
+      then:
+        - lambda: |-
+            // Only toggle fan if it wasn't a long press
+            if (!id(power_long_press_triggered)) {
+              if (id(air_purifier_fan).state) {
+                // Fan is ON, turn it OFF
+                id(air_purifier_fan).turn_off().perform();
+                ESP_LOGD("power", "Fan turned OFF");
+              } else {
+                // Fan is OFF, turn it ON to last speed
+                auto call = id(air_purifier_fan).turn_on();
+                call.set_speed(id(last_fan_speed));
+                call.perform();
+                ESP_LOGD("power", "Fan turned ON to speed %d%%", id(last_fan_speed));
+              }
+              
+              // If we're turning the fan on and LEDs were dimmed, restore them
+              if (id(air_purifier_fan).state && id(leds_dimmed)) {
+                id(leds_dimmed) = false;
+                
+                // Update LEDs based on current system state (they'll use the reset 100% brightness)
+                id(update_speed_leds).execute();
+                
+                // Restore other LED states based on their switches/modes
+                if (id(auto_mode_switch).state) {
+                  id(auto_mode_led).turn_on().perform();
+                }
+                if (id(sleep_mode_switch).state) {
+                  id(sleep_mode_led).turn_on().perform();
+                }
+                if (id(ionizer_switch).state) {
+                  id(ion_led).turn_on().perform();
+                  id(ion_led_2).turn_on().perform();
+                  id(ion_led_3).turn_on().perform();
+                }
+                
+                // Restore odor LEDs based on current setting
+                int odor_level = id(odor_level_display).state;
+                if (odor_level >= 1) id(odor_1_led).turn_on().perform();
+                if (odor_level >= 2) id(odor_2_led).turn_on().perform();
+                if (odor_level >= 3) id(odor_3_led).turn_on().perform();
+                if (odor_level >= 4) id(odor_4_led).turn_on().perform();
+                if (odor_level >= 5) id(odor_5_led).turn_on().perform();
+                
+                ESP_LOGD("leds", "LED display restored after power on");
+              }
+            }
+            // Reset the flag
+            id(power_long_press_triggered) = false;
+    on_multi_click:
+      - timing:
+          - ON for at least 1000ms
+        then:
+          - lambda: |-
+              id(power_long_press_triggered) = true;
+          - logger.log: "Power switch long press detected - toggling LED display"
+          - lambda: |-
+              if (!id(leds_dimmed)) {
+                // Turning LEDs off - just turn off what's currently on
+                // The states are preserved by the underlying systems
+                id(leds_dimmed) = true;
+                
+                // Turn off all LEDs (they'll remember their state internally)
+                id(auto_mode_led).turn_off().perform();
+                id(sleep_mode_led).turn_off().perform();
+                id(filter_change_led).turn_off().perform();
+                id(speed_1_led).turn_off().perform();
+                id(speed_2_led).turn_off().perform();
+                id(speed_3_led).turn_off().perform();
+                id(speed_4_led).turn_off().perform();
+                id(speed_5_led).turn_off().perform();
+                id(ion_led).turn_off().perform();
+                id(ion_led_2).turn_off().perform();
+                id(ion_led_3).turn_off().perform();
+                id(odor_1_led).turn_off().perform();
+                id(odor_2_led).turn_off().perform();
+                id(odor_3_led).turn_off().perform();
+                id(odor_4_led).turn_off().perform();
+                id(odor_5_led).turn_off().perform();
+                
+                ESP_LOGD("leds", "LED display turned OFF");
+              } else {
+                // Restore LED states
+                id(leds_dimmed) = false;
+                
+                // Update LEDs based on current system state
+                id(update_speed_leds).execute();
+                
+                // Restore other LED states based on their switches/modes
+                if (id(auto_mode_switch).state) {
+                  id(auto_mode_led).turn_on().perform();
+                }
+                if (id(sleep_mode_switch).state) {
+                  id(sleep_mode_led).turn_on().perform();
+                }
+                if (id(ionizer_switch).state) {
+                  id(ion_led).turn_on().perform();
+                  id(ion_led_2).turn_on().perform();
+                  id(ion_led_3).turn_on().perform();
+                }
+                
+                // Restore odor LEDs based on current setting
+                int odor_level = id(odor_level_display).state;
+                if (odor_level >= 1) id(odor_1_led).turn_on().perform();
+                if (odor_level >= 2) id(odor_2_led).turn_on().perform();
+                if (odor_level >= 3) id(odor_3_led).turn_on().perform();
+                if (odor_level >= 4) id(odor_4_led).turn_on().perform();
+                if (odor_level >= 5) id(odor_5_led).turn_on().perform();
+                
+                ESP_LOGD("leds", "LED display restored");
+              }
+
+# Sensors
+sensor:
+  # Fan motor feedback ADC (GPIO6) using C6 ADC
+  - platform: c6_adc
+    pin: GPIO6
+    name: "Fan Monitor Voltage"
+    id: fan_monitor
+    internal: true
+    update_interval: 1s
+    attenuation: 12dB
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+    
+  - platform: template
+    name: "Fan Status"
+    lambda: |-
+      float voltage = id(fan_monitor).state;
+      if (isnan(voltage)) return 0;
+      
+      // Assuming similar behavior: higher voltage = off, lower = running
+      // Adjust these thresholds based on actual readings
+      if (voltage > 2.5) {
+        return 0;  // Fan is off
+      } else if (voltage < 1.2) {
+        return 100;  // Fan at full speed  
+      } else {
+        // Linear interpolation
+        float percent = (2.5 - voltage) / (2.5 - 1.2) * 100;
+        if (percent < 0) percent = 0;
+        if (percent > 100) percent = 100;
+        return percent;
+      }
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 1s
+    icon: "mdi:fan"
+    
+  # Filter lifetime sensors
+  - platform: template
+    name: "Carbon Filter Life"
+    id: carbon_filter_life
+    lambda: |-
+      // Carbon filter: 3 months = 90 days = 7,776,000 seconds
+      const int carbon_filter_lifetime = 7776000;
+      int remaining = carbon_filter_lifetime - id(carbon_filter_runtime);
+      if (remaining < 0) remaining = 0;
+      float percent = (float)remaining / carbon_filter_lifetime * 100.0;
+      return percent;
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    update_interval: 60s
+    icon: "mdi:air-filter"
+    
+  - platform: template
+    name: "HEPA Filter Life"
+    id: hepa_filter_life
+    lambda: |-
+      // HEPA filter: 12 months = 365 days = 31,536,000 seconds
+      const int hepa_filter_lifetime = 31536000;
+      int remaining = hepa_filter_lifetime - id(hepa_filter_runtime);
+      if (remaining < 0) remaining = 0;
+      float percent = (float)remaining / hepa_filter_lifetime * 100.0;
+      return percent;
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    update_interval: 60s
+    icon: "mdi:air-filter"
+    
+  # Days remaining sensors
+  - platform: template
+    name: "Carbon Filter Days Remaining"
+    lambda: |-
+      const int carbon_filter_lifetime = 7776000;
+      int remaining = carbon_filter_lifetime - id(carbon_filter_runtime);
+      if (remaining < 0) remaining = 0;
+      return remaining / 86400.0;  // Convert seconds to days
+    unit_of_measurement: "days"
+    accuracy_decimals: 0
+    update_interval: 60s
+    icon: "mdi:calendar-clock"
+    
+  - platform: template
+    name: "HEPA Filter Days Remaining"
+    lambda: |-
+      const int hepa_filter_lifetime = 31536000;
+      int remaining = hepa_filter_lifetime - id(hepa_filter_runtime);
+      if (remaining < 0) remaining = 0;
+      return remaining / 86400.0;  // Convert seconds to days
+    unit_of_measurement: "days"
+    accuracy_decimals: 0
+    update_interval: 60s
+    icon: "mdi:calendar-clock"
+
+# Script to update speed LEDs
+script:
+  - id: update_speed_leds
+    then:
+      - lambda: |-
+          // Turn off all speed LEDs first
+          id(speed_1_led).turn_off().perform();
+          id(speed_2_led).turn_off().perform();
+          id(speed_3_led).turn_off().perform();
+          id(speed_4_led).turn_off().perform();
+          id(speed_5_led).turn_off().perform();
+          
+          // Don't update if LEDs are dimmed or fan is off
+          if (id(leds_dimmed) || !id(air_purifier_fan).state) return;
+          
+          int speed = id(air_purifier_fan).speed;
+          
+          // Progressive LED lighting based on speed
+          if (speed > 0) {
+            // Always light LED 1 if fan is on
+            id(speed_1_led).turn_on().perform();
+          }
+          
+          if (speed >= 28) {
+            // Speed 2 or higher: light LEDs 1 & 2
+            id(speed_2_led).turn_on().perform();
+          }
+          
+          if (speed >= 38) {
+            // Speed 3 or higher: light LEDs 1, 2 & 3
+            id(speed_3_led).turn_on().perform();
+          }
+          
+          if (speed >= 54) {
+            // Speed 4 or higher: light LEDs 1, 2, 3, 4 & 5
+            id(speed_4_led).turn_on().perform();
+            id(speed_5_led).turn_on().perform();
+          }
+          
+  - id: update_odor_leds
+    parameters:
+      level: int
+    then:
+      - lambda: |-
+          // Turn off all odor LEDs first
+          id(odor_1_led).turn_off().perform();
+          id(odor_2_led).turn_off().perform();
+          id(odor_3_led).turn_off().perform();
+          id(odor_4_led).turn_off().perform();
+          id(odor_5_led).turn_off().perform();
+          
+          // Light up LEDs based on level
+          if (level >= 1) id(odor_1_led).turn_on().perform();
+          if (level >= 2) id(odor_2_led).turn_on().perform();
+          if (level >= 3) id(odor_3_led).turn_on().perform();
+          if (level >= 4) id(odor_4_led).turn_on().perform();
+          if (level >= 5) id(odor_5_led).turn_on().perform();
+          
+  - id: check_filter_status
+    then:
+      - lambda: |-
+          // Check if either filter needs replacement
+          const int carbon_filter_lifetime = 7776000;  // 90 days
+          const int hepa_filter_lifetime = 31536000;   // 365 days
+          
+          bool carbon_expired = id(carbon_filter_runtime) >= carbon_filter_lifetime;
+          bool hepa_expired = id(hepa_filter_runtime) >= hepa_filter_lifetime;
+          
+          if (carbon_expired || hepa_expired) {
+            // Turn on filter change LED if not already on
+            if (!id(filter_change_led).current_values.is_on() && !id(leds_dimmed)) {
+              id(filter_change_led).turn_on().perform();
+            }
+          }
+
+# Runtime tracking interval
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          // Only count runtime when fan is actually running
+          if (id(air_purifier_fan).state && id(air_purifier_fan).speed > 0) {
+            id(carbon_filter_runtime) += 1;
+            id(hepa_filter_runtime) += 1;
+          }
+      - script.execute: check_filter_status
+
+# Fan component with measured duty cycles
+fan:
+  - platform: speed
+    output: fan_control_pwm
+    name: "Air Purifier Fan"
+    id: air_purifier_fan
+    speed_count: 100  # Allow 100 speed levels (0-100%)
+    restore_mode: ALWAYS_OFF  # Don't auto-restore, we'll handle it manually
+    on_turn_on:
+      - output.turn_on: level_shifter_oe
+      - light.turn_on:
+          id: status_led
+          brightness: 30%
+          red: 0%
+          green: 100%
+          blue: 0%
+      # Reset LED dimmed state and brightness when fan turns on
+      - lambda: |-
+          id(leds_dimmed) = false;
+          // Reset global brightness to 100%
+          id(global_led_brightness).publish_state(100);
+          // Remember fan is on
+          id(fan_was_on) = true;
+      - script.execute: update_speed_leds
+      - logger.log: "Fan turned ON - LED brightness reset to 100%"
+    on_turn_off:
+      - output.turn_off: level_shifter_oe
+      - output.set_level:
+          id: fan_control_pwm
+          level: 0
+      - light.turn_off: status_led
+      # Reset LED dimmed state when fan turns off
+      - lambda: |-
+          id(leds_dimmed) = false;
+          // Remember fan is off
+          id(fan_was_on) = false;
+      - script.execute: update_speed_leds
+      - logger.log: "Fan turned OFF"
+    on_speed_set:
+      - lambda: |-
+          // Direct percentage control (0-100)
+          int speed = id(air_purifier_fan).speed;
+          float pwm_level = speed / 100.0;
+          
+          id(fan_control_pwm).set_level(pwm_level);
+          ESP_LOGD("fan", "Speed set to %d percent", speed);
+          
+          // Remember this speed for next power on (only if > 0)
+          if (speed > 0) {
+            id(last_fan_speed) = speed;
+          }
+      - script.execute: update_speed_leds
+
+# Controls
+switch:
+  # ION control
+  - platform: template
+    name: "Ionizer"
+    id: ionizer_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:molecule"
+    turn_on_action:
+      - output.turn_on: ion_enable
+      - light.turn_on: ion_led
+      - light.turn_on: ion_led_2
+      - light.turn_on: ion_led_3
+      - logger.log: "Ionizer turned ON"
+    turn_off_action:
+      - output.turn_off: ion_enable
+      - light.turn_off: ion_led
+      - light.turn_off: ion_led_2
+      - light.turn_off: ion_led_3
+      - logger.log: "Ionizer turned OFF"
+      
+  # Auto mode
+  - platform: template
+    name: "Auto Mode"
+    id: auto_mode_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:autorenew"
+    turn_on_action:
+      - light.turn_on: auto_mode_led
+      - logger.log: "Auto mode turned ON"
+    turn_off_action:
+      - light.turn_off: auto_mode_led
+      - logger.log: "Auto mode turned OFF"
+      
+  # Sleep mode
+  - platform: template
+    name: "Sleep Mode"
+    id: sleep_mode_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: "mdi:sleep"
+    turn_on_action:
+      - light.turn_on: sleep_mode_led
+      - fan.turn_on:
+          id: air_purifier_fan
+          speed: 10
+      - logger.log: "Sleep mode turned ON"
+      # Dim all LEDs to 25% in sleep mode
+      - lambda: |-
+          float sleep_brightness = 0.25;
+          
+          // Set all LED brightnesses to 25%
+          if (id(auto_mode_led).current_values.is_on()) {
+            auto call = id(auto_mode_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          auto call = id(sleep_mode_led).make_call();
+          call.set_brightness(sleep_brightness);
+          call.perform();
+          
+          if (id(filter_change_led).current_values.is_on()) {
+            call = id(filter_change_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(speed_1_led).current_values.is_on()) {
+            call = id(speed_1_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(speed_2_led).current_values.is_on()) {
+            call = id(speed_2_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(speed_3_led).current_values.is_on()) {
+            call = id(speed_3_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(speed_4_led).current_values.is_on()) {
+            call = id(speed_4_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(speed_5_led).current_values.is_on()) {
+            call = id(speed_5_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(ion_led).current_values.is_on()) {
+            call = id(ion_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+            
+            call = id(ion_led_2).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+            
+            call = id(ion_led_3).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(odor_1_led).current_values.is_on()) {
+            call = id(odor_1_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(odor_2_led).current_values.is_on()) {
+            call = id(odor_2_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(odor_3_led).current_values.is_on()) {
+            call = id(odor_3_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(odor_4_led).current_values.is_on()) {
+            call = id(odor_4_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          if (id(odor_5_led).current_values.is_on()) {
+            call = id(odor_5_led).make_call();
+            call.set_brightness(sleep_brightness);
+            call.perform();
+          }
+          
+          ESP_LOGD("sleep", "All LEDs dimmed to 25%% for sleep mode");
+    turn_off_action:
+      - light.turn_off: sleep_mode_led
+      - logger.log: "Sleep mode turned OFF"
+      # Restore LED brightness when exiting sleep mode
+      - lambda: |-
+          float normal_brightness = id(global_led_brightness).state / 100.0;
+          
+          // Restore all LED brightnesses to global setting
+          if (id(auto_mode_led).current_values.is_on()) {
+            auto call = id(auto_mode_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(filter_change_led).current_values.is_on()) {
+            auto call = id(filter_change_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(speed_1_led).current_values.is_on()) {
+            auto call = id(speed_1_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(speed_2_led).current_values.is_on()) {
+            auto call = id(speed_2_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(speed_3_led).current_values.is_on()) {
+            auto call = id(speed_3_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(speed_4_led).current_values.is_on()) {
+            auto call = id(speed_4_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(speed_5_led).current_values.is_on()) {
+            auto call = id(speed_5_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(ion_led).current_values.is_on()) {
+            auto call = id(ion_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+            
+            call = id(ion_led_2).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+            
+            call = id(ion_led_3).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(odor_1_led).current_values.is_on()) {
+            auto call = id(odor_1_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(odor_2_led).current_values.is_on()) {
+            auto call = id(odor_2_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(odor_3_led).current_values.is_on()) {
+            auto call = id(odor_3_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(odor_4_led).current_values.is_on()) {
+            auto call = id(odor_4_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          if (id(odor_5_led).current_values.is_on()) {
+            auto call = id(odor_5_led).make_call();
+            call.set_brightness(normal_brightness);
+            call.perform();
+          }
+          
+          ESP_LOGD("sleep", "LED brightness restored to %.0f%%", id(global_led_brightness).state);
+      
+  # LED Display Toggle
+  - platform: template
+    name: "LED Display"
+    id: led_display_switch
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    icon: "mdi:led-on"
+    lambda: |-
+      return !id(leds_dimmed);
+    turn_on_action:
+      - lambda: |-
+          if (id(leds_dimmed)) {
+            id(leds_dimmed) = false;
+            // Restore LED states
+            id(update_speed_leds).execute();
+            if (id(auto_mode_switch).state) id(auto_mode_led).turn_on().perform();
+            if (id(sleep_mode_switch).state) id(sleep_mode_led).turn_on().perform();
+            if (id(ionizer_switch).state) {
+              id(ion_led).turn_on().perform();
+              id(ion_led_2).turn_on().perform();
+              id(ion_led_3).turn_on().perform();
+            }
+            int odor_level = id(odor_level_display).state;
+            if (odor_level >= 1) id(odor_1_led).turn_on().perform();
+            if (odor_level >= 2) id(odor_2_led).turn_on().perform();
+            if (odor_level >= 3) id(odor_3_led).turn_on().perform();
+            if (odor_level >= 4) id(odor_4_led).turn_on().perform();
+            if (odor_level >= 5) id(odor_5_led).turn_on().perform();
+          }
+    turn_off_action:
+      - lambda: |-
+          if (!id(leds_dimmed)) {
+            id(leds_dimmed) = true;
+            // Turn off all LEDs
+            id(auto_mode_led).turn_off().perform();
+            id(sleep_mode_led).turn_off().perform();
+            id(filter_change_led).turn_off().perform();
+            id(speed_1_led).turn_off().perform();
+            id(speed_2_led).turn_off().perform();
+            id(speed_3_led).turn_off().perform();
+            id(speed_4_led).turn_off().perform();
+            id(speed_5_led).turn_off().perform();
+            id(ion_led).turn_off().perform();
+            id(ion_led_2).turn_off().perform();
+            id(ion_led_3).turn_off().perform();
+            id(odor_1_led).turn_off().perform();
+            id(odor_2_led).turn_off().perform();
+            id(odor_3_led).turn_off().perform();
+            id(odor_4_led).turn_off().perform();
+            id(odor_5_led).turn_off().perform();
+          }
+
+number:
+  # Odor level display
+  - platform: template
+    name: "Odor Level Display"
+    id: odor_level_display
+    min_value: 0
+    max_value: 5
+    step: 1
+    initial_value: 0
+    optimistic: true
+    icon: "mdi:air-filter"
+    on_value:
+      then:
+        - script.execute:
+            id: update_odor_leds
+            level: !lambda 'return (int)x;'
+            
+  # Global LED brightness control
+  - platform: template
+    name: "All LEDs Brightness"
+    id: global_led_brightness
+    min_value: 0
+    max_value: 100
+    step: 5
+    initial_value: 100
+    optimistic: true
+    unit_of_measurement: "%"
+    icon: "mdi:brightness-percent"
+    on_value:
+      then:
+        - lambda: |-
+            float brightness = x / 100.0;
+            
+            // Update all LED brightnesses
+            auto call = id(auto_mode_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(sleep_mode_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(filter_change_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(speed_1_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(speed_2_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(speed_3_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(speed_4_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(speed_5_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(ion_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(ion_led_2).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(ion_led_3).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(odor_1_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(odor_2_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(odor_3_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(odor_4_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(odor_5_led).make_call();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            ESP_LOGD("leds", "Set all LED brightness to %.0f%%", x);
+
+# Preset speeds for convenience
+select:
+  - platform: template
+    name: "Preset Speeds"
+    id: preset_speeds
+    options:
+      - "Custom"
+      - "Original Speed 1 (20%)"
+      - "Original Speed 2 (28%)"
+      - "Original Speed 3 (38%)"
+      - "Original Speed 4 (54%)"
+      - "Silent (10%)"
+      - "Medium-Low (35%)"
+      - "Medium-High (45%)"
+      - "Turbo (75%)"
+      - "Max (100%)"
+    initial_option: "Custom"
+    optimistic: true
+    on_value:
+      then:
+        - lambda: |-
+            if (x == "Original Speed 1 (20%)") {
+              auto call = id(air_purifier_fan).turn_on();
+              call.set_speed(20);
+              call.perform();
+            } else if (x == "Original Speed 2 (28%)") {
+              auto call = id(air_purifier_fan).turn_on();
+              call.set_speed(28);
+              call.perform();
+            } else if (x == "Original Speed 3 (38%)") {
+              auto call = id(air_purifier_fan).turn_on();
+              call.set_speed(38);
+              call.perform();
+            } else if (x == "Original Speed 4 (54%)") {
+              auto call = id(air_purifier_fan).turn_on();
+              call.set_speed(54);
+              call.perform();
+            } else if (x == "Silent (10%)") {
+              auto call = id(air_purifier_fan).turn_on();
+              call.set_speed(10);
+              call.perform();
+            } else if (x == "Medium-Low (35%)") {
+              auto call = id(air_purifier_fan).turn_on();
+              call.set_speed(35);
+              call.perform();
+            } else if (x == "Medium-High (45%)") {
+              auto call = id(air_purifier_fan).turn_on();
+              call.set_speed(45);
+              call.perform();
+            } else if (x == "Turbo (75%)") {
+              auto call = id(air_purifier_fan).turn_on();
+              call.set_speed(75);
+              call.perform();
+            } else if (x == "Max (100%)") {
+              auto call = id(air_purifier_fan).turn_on();
+              call.set_speed(100);
+              call.perform();
+            }
+
+# Filter reset buttons for Home Assistant
+button:
+  - platform: template
+    name: "Reset Carbon Filter"
+    id: reset_carbon_filter
+    icon: "mdi:air-filter"
+    on_press:
+      - lambda: |-
+          id(carbon_filter_runtime) = 0;
+          ESP_LOGI("filter", "Carbon filter timer reset");
+      - script.execute: check_filter_status
+      
+  - platform: template
+    name: "Reset HEPA Filter"
+    id: reset_hepa_filter
+    icon: "mdi:air-filter"
+    on_press:
+      - lambda: |-
+          id(hepa_filter_runtime) = 0;
+          ESP_LOGI("filter", "HEPA filter timer reset");
+      - script.execute: check_filter_status
+
+# GPIO Pin Summary
+# ================
+# ESP32-C6 GPIO Assignments:
+# GPIO0  - Level Shifter Output Enable (Active High)
+# GPIO1  - Fan PWM Control (4kHz PWM signal) → Stock Pin 7
+# GPIO2  - Ionizer Enable (Active High) → Stock Pin 2
+# GPIO3  - Mode Switch (Input, Pull-up, Active Low) - Short: cycle speeds, Long: toggle ion
+# GPIO4  - Filter Reset Switch (Input, Pull-up, Active Low) - Short: clear LED, Long: reset timers
+# GPIO6  - Fan Monitor ADC (Voltage feedback from fan) → Stock Pin 8
+# GPIO7  - Power Switch (Input, Pull-up, Active Low) - Short: toggle fan, Long: dim LEDs
+# GPIO8  - WS2812 RGB Status LED (Data line)
+# GPIO14 - I2C SDA (PCA9685 communication)
+# GPIO15 - I2C SCL (PCA9685 communication)
+# GPIO18 - PCA9685 Output Enable (Active Low)
+#
+# Stock Connector Mapping:
+# Stock Pin 1 (12V) → Board power input
+# Stock Pin 2 (ION Enable) → GPIO2
+# Stock Pin 3 (N/C) → Not used
+# Stock Pin 4 (5V) → Board 5V rail
+# Stock Pin 5 (GND) → Board ground
+# Stock Pin 6 (N/C) → Not used
+# Stock Pin 7 (Fan PWM) → GPIO1 (via level shifter)
+# Stock Pin 8 (Fan Speed Signal) → GPIO6 (via voltage divider)
+#
+# PCA9685 Channel Assignments:
+# Ch0  - Auto Mode LED
+# Ch1  - Sleep Mode LED
+# Ch2  - Filter Change LED
+# Ch3  - Odor Level 5 LED
+# Ch4  - Odor Level 4 LED
+# Ch5  - Odor Level 3 LED
+# Ch6  - Odor Level 2 LED
+# Ch7  - Odor Level 1 LED
+# Ch8  - Ionizer LED (Primary)
+# Ch9  - Speed 1 LED
+# Ch10 - Speed 2 LED
+# Ch11 - Speed 3 LED
+# Ch12 - Speed 4 LED
+# Ch13 - Speed 5 LED
+# Ch14 - Ionizer LED 2
+# Ch15 - Ionizer LED 3
+#
+# Fan Speed Settings:
+# Speed 1: 20% PWM (Original purifier low speed)
+# Speed 2: 28% PWM (Original purifier medium-low)
+# Speed 3: 38% PWM (Original purifier medium-high)
+# Speed 4: 54% PWM (Original purifier high speed)
+# Sleep Mode: 10% PWM (Ultra quiet)
+#
+# Development Notes - Stock PCB Measurements:
+# PWM Frequency: 3.910kHz (measured from original board)
+# Fan Speed Feedback Voltages vs PWM Duty Cycles:
+# Level 1: 0.500V @ 22% duty cycle
+# Level 2: 0.810V @ 28% duty cycle
+# Level 3: 1.131V @ 38% duty cycle
+# Level 4: 2.000V @ 56% duty cycle
+# Note: Our implementation uses 4kHz PWM (close to stock)
+#       and duty cycles of 20%, 28%, 38%, 54% based on testing
+#
+# Filter Life Settings:
+# Carbon Filter: 90 days (3 months)
+# HEPA Filter: 365 days (12 months)
+# Runtime tracked only when fan is running
+#
+# Home Assistant Exposed Entities:
+# - Air Purifier Fan (with 0-100% speed control)
+# - Ionizer Switch
+# - Auto Mode Switch
+# - Sleep Mode Switch (auto-dims LEDs to 25%)
+# - LED Display Switch (on/off all LEDs)
+# - All LEDs Brightness (0-100%)
+# - Odor Level Display (0-5)
+# - Preset Speed Selector
+# - Carbon Filter Life % / Days Remaining
+# - HEPA Filter Life % / Days Remaining
+# - Carbon Filter Needs Replacement (binary)
+# - HEPA Filter Needs Replacement (binary)
+# - Reset Carbon Filter (button)
+# - Reset HEPA Filter (button)
+# - Mode Switch Button (from physical button)
+# - Filter Reset Switch Button (from physical button)
+# - Power Switch Button (from physical button)
+# - Fan Status Sensor (feedback %)
+# - Auto/Sleep/Filter/Ion Mode LED entities
+# - RGB Status LED
