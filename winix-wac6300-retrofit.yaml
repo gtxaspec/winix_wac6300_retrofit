@@ -443,6 +443,13 @@ binary_sensor:
         - lambda: |-
             // Only cycle speeds if it wasn't a long press
             if (!id(mode_long_press_triggered)) {
+              // Check if we're in sleep mode and about to change speed
+              if (id(sleep_mode_switch).state && id(air_purifier_fan).state) {
+                // Turn off sleep mode since we're changing the speed
+                id(sleep_mode_switch).turn_off();
+                ESP_LOGD("mode", "Sleep mode disabled due to speed change");
+              }
+              
               // Cycle through original speeds: Off -> 20% -> 28% -> 38% -> 54% -> Off
               if (!id(air_purifier_fan).state) {
                 // Fan is off, turn on at speed 1 (20%)
@@ -852,21 +859,40 @@ script:
           
           int speed = id(air_purifier_fan).speed;
           
+          // Determine the correct brightness to use
+          float brightness = 1.0;  // Default to full brightness
+          if (id(sleep_mode_switch).state) {
+            brightness = 0.25;  // Sleep mode brightness
+          } else {
+            brightness = id(global_led_brightness).state / 100.0;  // Global brightness setting
+          }
+          
           if (speed > 0) {
-            id(speed_1_led).turn_on().perform();
+            auto call = id(speed_1_led).turn_on();
+            call.set_brightness(brightness);
+            call.perform();
           }
           
           if (speed >= 28) {
-            id(speed_2_led).turn_on().perform();
+            auto call = id(speed_2_led).turn_on();
+            call.set_brightness(brightness);
+            call.perform();
           }
           
           if (speed >= 38) {
-            id(speed_3_led).turn_on().perform();
+            auto call = id(speed_3_led).turn_on();
+            call.set_brightness(brightness);
+            call.perform();
           }
           
           if (speed >= 54) {
-            id(speed_4_led).turn_on().perform();
-            id(speed_5_led).turn_on().perform();
+            auto call = id(speed_4_led).turn_on();
+            call.set_brightness(brightness);
+            call.perform();
+            
+            call = id(speed_5_led).turn_on();
+            call.set_brightness(brightness);
+            call.perform();
           }
           
   - id: update_odor_leds
@@ -953,6 +979,13 @@ fan:
           
           if (speed > 0) {
             id(last_fan_speed) = speed;
+          }
+          
+          // Check if we're no longer at sleep speed (10%) while sleep mode is on
+          if (id(sleep_mode_switch).state && speed != 10) {
+            // Turn off sleep mode since we're not at sleep speed anymore
+            id(sleep_mode_switch).turn_off();
+            ESP_LOGD("fan", "Sleep mode disabled - speed changed from 10%% to %d%%", speed);
           }
       - script.execute: update_speed_leds
 
@@ -1424,4 +1457,3 @@ button:
     name: "Restart"
     id: restart_button
     internal: true
-
