@@ -1276,6 +1276,119 @@ switch:
             id(odor_4_led).turn_off().perform();
             id(odor_5_led).turn_off().perform();
           }
+  
+  - platform: template
+    name: "LED Test Mode"
+    id: led_test_switch
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    icon: "mdi:test-tube"
+    turn_on_action:
+      - logger.log: "LED Test Mode ON - All LEDs at 100%"
+      - light.turn_on:
+          id: auto_mode_led
+          brightness: 100%
+      - light.turn_on:
+          id: sleep_mode_led
+          brightness: 100%
+      - light.turn_on:
+          id: filter_change_led
+          brightness: 100%
+      - light.turn_on:
+          id: speed_1_led
+          brightness: 100%
+      - light.turn_on:
+          id: speed_2_led
+          brightness: 100%
+      - light.turn_on:
+          id: speed_3_led
+          brightness: 100%
+      - light.turn_on:
+          id: speed_4_led
+          brightness: 100%
+      - light.turn_on:
+          id: speed_5_led
+          brightness: 100%
+      - light.turn_on:
+          id: ion_led
+          brightness: 100%
+      - light.turn_on:
+          id: ion_led_2
+          brightness: 100%
+      - light.turn_on:
+          id: ion_led_3
+          brightness: 100%
+      - light.turn_on:
+          id: odor_1_led
+          brightness: 100%
+      - light.turn_on:
+          id: odor_2_led
+          brightness: 100%
+      - light.turn_on:
+          id: odor_3_led
+          brightness: 100%
+      - light.turn_on:
+          id: odor_4_led
+          brightness: 100%
+      - light.turn_on:
+          id: odor_5_led
+          brightness: 100%
+    turn_off_action:
+      - logger.log: "LED Test Mode OFF - Restoring normal state"
+      # Restore LED states based on current system state
+      - lambda: |-
+          // Turn off all LEDs first
+          id(auto_mode_led).turn_off().perform();
+          id(sleep_mode_led).turn_off().perform();
+          id(filter_change_led).turn_off().perform();
+          id(speed_1_led).turn_off().perform();
+          id(speed_2_led).turn_off().perform();
+          id(speed_3_led).turn_off().perform();
+          id(speed_4_led).turn_off().perform();
+          id(speed_5_led).turn_off().perform();
+          id(ion_led).turn_off().perform();
+          id(ion_led_2).turn_off().perform();
+          id(ion_led_3).turn_off().perform();
+          id(odor_1_led).turn_off().perform();
+          id(odor_2_led).turn_off().perform();
+          id(odor_3_led).turn_off().perform();
+          id(odor_4_led).turn_off().perform();
+          id(odor_5_led).turn_off().perform();
+          
+          // Only restore if LEDs aren't dimmed
+          if (!id(leds_dimmed)) {
+            // Restore based on current system state
+            id(update_speed_leds).execute();
+            
+            if (id(auto_mode_switch).state) {
+              id(auto_mode_led).turn_on().perform();
+            }
+            if (id(sleep_mode_switch).state) {
+              id(sleep_mode_led).turn_on().perform();
+            }
+            if (id(ionizer_switch).state) {
+              id(ion_led).turn_on().perform();
+              id(ion_led_2).turn_on().perform();
+              id(ion_led_3).turn_on().perform();
+            }
+            
+            // Restore odor LEDs based on current setting
+            int odor_level = id(odor_level_display).state;
+            if (odor_level >= 1) id(odor_1_led).turn_on().perform();
+            if (odor_level >= 2) id(odor_2_led).turn_on().perform();
+            if (odor_level >= 3) id(odor_3_led).turn_on().perform();
+            if (odor_level >= 4) id(odor_4_led).turn_on().perform();
+            if (odor_level >= 5) id(odor_5_led).turn_on().perform();
+            
+            // Check filter status
+            const int carbon_filter_lifetime = 7776000;
+            const int hepa_filter_lifetime = 31536000;
+            bool carbon_expired = id(carbon_filter_runtime) >= carbon_filter_lifetime;
+            bool hepa_expired = id(hepa_filter_runtime) >= hepa_filter_lifetime;
+            if (carbon_expired || hepa_expired) {
+              id(filter_change_led).turn_on().perform();
+            }
+          }
 
 number:
   - platform: template
