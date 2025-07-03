@@ -27,7 +27,7 @@
 # - Progressive speed indicator LEDs (cumulative lighting)
 # - Smart power button: always turns on to last used speed (never just off)
 # - Mode button: short press cycles speeds, long press toggles ionizer
-# - Power button: short press toggles fan, long press dims/restores LEDs
+# - Power button: short press toggles fan, long press dims/restores LEDs, 30s hold reboots
 # - Filter reset button: short press clears LED, long press (3s) resets all timers
 # - Boot sequence displays all LEDs for 1 second
 # - LED display auto-restores when unit powers on
@@ -751,6 +751,85 @@ binary_sensor:
                 
                 ESP_LOGD("leds", "LED display restored");
               }
+      - timing:
+          - ON for at least 30s
+        then:
+          - lambda: |-
+              id(power_long_press_triggered) = true;
+          - logger.log: "Power switch held for 30 seconds - initiating reboot sequence"
+          # Flash all LEDs 3 times
+          - repeat:
+              count: 3
+              then:
+                - light.turn_on:
+                    id: auto_mode_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: sleep_mode_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: filter_change_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: speed_1_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: speed_2_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: speed_3_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: speed_4_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: speed_5_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: ion_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: ion_led_2
+                    brightness: 100%
+                - light.turn_on:
+                    id: ion_led_3
+                    brightness: 100%
+                - light.turn_on:
+                    id: odor_1_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: odor_2_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: odor_3_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: odor_4_led
+                    brightness: 100%
+                - light.turn_on:
+                    id: odor_5_led
+                    brightness: 100%
+                - delay: 500ms
+                - light.turn_off: auto_mode_led
+                - light.turn_off: sleep_mode_led
+                - light.turn_off: filter_change_led
+                - light.turn_off: speed_1_led
+                - light.turn_off: speed_2_led
+                - light.turn_off: speed_3_led
+                - light.turn_off: speed_4_led
+                - light.turn_off: speed_5_led
+                - light.turn_off: ion_led
+                - light.turn_off: ion_led_2
+                - light.turn_off: ion_led_3
+                - light.turn_off: odor_1_led
+                - light.turn_off: odor_2_led
+                - light.turn_off: odor_3_led
+                - light.turn_off: odor_4_led
+                - light.turn_off: odor_5_led
+                - delay: 500ms
+          - logger.log: "Reboot sequence complete - waiting 5 seconds before restart"
+          - delay: 5s
+          - button.press: restart_button
 
 # Sensors
 sensor:
@@ -1461,6 +1540,11 @@ button:
           ESP_LOGI("filter", "HEPA filter timer reset");
       - script.execute: check_filter_status
 
+  - platform: restart
+    name: "Restart"
+    id: restart_button
+    internal: true
+
 # GPIO Pin Summary
 # ================
 # ESP32-C6 GPIO Assignments:
@@ -1470,7 +1554,7 @@ button:
 # GPIO3  - Mode Switch (Input, Pull-up, Active Low) - Short: cycle speeds, Long: toggle ion
 # GPIO4  - Filter Reset Switch (Input, Pull-up, Active Low) - Short: clear LED, Long: reset timers
 # GPIO6  - Fan Monitor ADC (Voltage feedback from fan) → Stock Pin 8
-# GPIO7  - Power Switch (Input, Pull-up, Active Low) - Short: toggle fan, Long: dim LEDs
+# GPIO7  - Power Switch (Input, Pull-up, Active Low) - Short: toggle fan, Long: dim LEDs, 30s: reboot
 # GPIO8  - WS2812 RGB Status LED (Data line)
 # GPIO14 - I2C SDA (PCA9685 communication)
 # GPIO15 - I2C SCL (PCA9685 communication)
