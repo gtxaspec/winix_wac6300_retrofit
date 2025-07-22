@@ -1,12 +1,12 @@
-# Winix WAC6300 Smart Air Purifier Retrofit
+# Winix WAC6300/WAC5500 Smart Air Purifier Retrofit
 
-Transform your Winix WAC6300 air purifier into a smart home device with full Home Assistant integration while maintaining all original functionality.
+Transform your Winix WAC6300 or WAC5500 air purifier into a smart home device with full Home Assistant integration while maintaining all original functionality.
 
 ## ⚠️ SAFETY WARNING ⚠️
 
 **HIGH VOLTAGE HAZARD - RISK OF DEATH OR SERIOUS INJURY**
 
-The Winix WAC6300 power supply contains:
+The Winix WAC6300/WAC5500 power supply contains:
 - **330VDC** for the fan motor
 - **120VAC** mains voltage
 - High voltage capacitors that may retain charge even when unplugged
@@ -17,7 +17,6 @@ The Winix WAC6300 power supply contains:
 - **ONLY** work on the control PCB replacement as described
 - The 8-pin connector carries only 5V and 12V, but the cable comes from the high voltage power supply - handle with care
 - Keep the power supply module closed - it contains lethal voltages
-- Work with one hand when possible to avoid current path across the heart
 - Use insulated tools
 - Never work on the device while powered
 - If you're not comfortable working near high voltage equipment, seek professional help
@@ -28,10 +27,9 @@ The Winix WAC6300 power supply contains:
 
 ### 🏠 Smart Home Integration
 - **Full Home Assistant control** via ESPHome
-- WiFi connectivity with OTA updates
+- WiFi / Thread connectivity
 - Real-time status monitoring and control
 - Filter life tracking with notifications
-- Energy monitoring through fan feedback
 
 ### 🎛️ Original Functions Preserved
 - All 4 original fan speeds (20%, 28%, 38%, 54%)
@@ -56,13 +54,25 @@ The Winix WAC6300 power supply contains:
 - **Custom Speed Control**: Set any speed from 0-100% via Home Assistant
 
 ### 🚧 Features Not Yet Implemented
-The following features from the original Winix WAC6300 are not currently implemented in this retrofit but are planned for future development:
+The following features from the original Winix units are not currently implemented in this retrofit but are planned for future development:
 
 - **Buzzer/Beeper**: Audio feedback for button presses and alerts
 - **IR Remote Receiver**: Support for the original infrared remote control
 - **Air Quality Filter**: Automatic fan speed adjustment based on air quality sensors
 
 These features may be added in future versions of the project.
+
+## Compatibility
+
+This retrofit has been tested and confirmed to work with the following Winix air purifier models:
+
+- **WAC6300** - 4-speed air purifier with ionizer
+- **WAC5500** - 4-speed air purifier with ionizer
+
+Both models share the same internal connector pinout and power supply configuration, making them compatible with this retrofit design.
+
+### Model Differences
+The WAC6300 and WAC5500 are cosmetically identical and use the same internal electronics and connector configuration. The retrofit maintains full compatibility with both models' original functionality.
 
 ## Technical Specifications
 
@@ -73,19 +83,17 @@ These features may be added in future versions of the project.
 
 ### Hardware Requirements
 
-- **Microcontroller**: ESP32-C6 (Supermini form factor)
+- **Microcontroller**: Seeed Xiao ESP32-C6 module
 - **PWM Controller**: PCA9685 16-channel PWM controller (I2C address 0x40)
 - **PWM Frequency**: 1kHz for LED control
-- **Level Shifter**: 3.3V to 5V bidirectional (8-channel recommended)
 - **Power Requirements**: 
-  - 5V from stock connector (Pin 4)
-  - 12V from stock connector (Pin 1) - not used by retrofit board
+  - 5V from stock connector (Pin 4) - 200mA (insufficient for ESP32 + accessories)
+  - 12V from stock connector (Pin 1) - 2A (primary power source)
   - 3.3V generated on-board for ESP32 and logic
+  - **12V to 5V Buck Converter** - Required due to insufficient current from stock 5V rail
 - **Additional Components**:
-  - Voltage divider for fan feedback signal (5V to 3.3V)
-  - 330Ω resistors for LED current limiting
-  - Pull-up resistors for button inputs (internal GPIO pull-ups used)
-  - WS2812 RGB status LED (optional)
+  - 12V to 5V buck converter (e.g., LM2596 module, 3A+ rating recommended)
+  - PCA9685 board with built-in current limiting resistors
 
 ## Wiring Diagram
 
@@ -93,10 +101,10 @@ These features may be added in future versions of the project.
 ```mermaid
 graph LR
     subgraph "8-Pin Stock Connector"
-        P1[Pin 1: 12V]
+        P1[Pin 1: 12V - 2A]
         P2[Pin 2: ION Enable]
         P3[Pin 3: N/C]
-        P4[Pin 4: 5V]
+        P4[Pin 4: 5V - 200mA]
         P5[Pin 5: GND]
         P6[Pin 6: N/C]
         P7[Pin 7: Fan PWM]
@@ -107,47 +115,35 @@ graph LR
 ### ESP32-C6 Connections
 ```mermaid
 graph TB
-    subgraph "ESP32-C6"
+    subgraph "Seeed Xiao ESP32-C6"
         ESP_3V3[3.3V Power]
         ESP_5V[5V Power]
         ESP_GND[GND]
-        GPIO0[GPIO0 - Level Shifter OE]
+        GPIO0[GPIO0 - Fan Feedback ADC]
         GPIO1[GPIO1 - Fan PWM Out]
-        GPIO2[GPIO2 - ION Enable]
-        GPIO3[GPIO3 - Mode Button]
-        GPIO4[GPIO4 - Filter Reset Button]
-        GPIO6[GPIO6 - Fan Feedback ADC]
-        GPIO7[GPIO7 - Power Button]
-        GPIO8[GPIO8 - RGB Status LED]
-        GPIO14[GPIO14 - I2C SDA]
-        GPIO15[GPIO15 - I2C SCL]
-        GPIO18[GPIO18 - PCA9685 OE]
+        GPIO2[GPIO2 - PCA9685 OE]
+        GPIO18[GPIO18 - Mode Button]
+        GPIO19[GPIO19 - Power Button]
+        GPIO20[GPIO20 - Filter Reset Button]
+        GPIO21[GPIO21 - ION Enable]
+        GPIO22[GPIO22 - I2C SDA]
+        GPIO23[GPIO23 - I2C SCL]
     end
     
-    subgraph "Level Shifter (8-Channel)"
-        subgraph "Side A (3.3V)"
-            VA[VA - 3.3V]
-            GND_A[GND]
-            A1[A1 - Fan PWM Out]
-            A2[A2 - ION Enable Out]
-            A3[A3 - Fan Feedback In]
-            OE_A[OE - Enable]
-        end
-        subgraph "Side B (5V)"
-            VB[VB - 5V]
-            GND_B[GND]
-            B1[B1 - Fan PWM to Stock]
-            B2[B2 - ION to Stock]
-            B3[B3 - Fan Feedback from Stock]
-        end
-    end
     
     subgraph "Stock Connector"
-        SC2[Pin 2: ION Enable - 5V]
-        SC4[Pin 4: 5V Power]
+        SC1[Pin 1: 12V - 2A]
+        SC2[Pin 2: ION Enable - 3.3V Safe]
+        SC4[Pin 4: 5V - 200mA]
         SC5[Pin 5: GND]
-        SC7[Pin 7: Fan PWM - 5V]
-        SC8[Pin 8: Fan Speed - 5V]
+        SC7[Pin 7: Fan PWM - 3.3V Safe]
+        SC8[Pin 8: Fan Speed - 3.3V Safe]
+    end
+    
+    subgraph "12V to 5V Buck Converter"
+        BUCK_12V[12V Input]
+        BUCK_5V[5V Output]
+        BUCK_GND[GND]
     end
     
     subgraph "Buttons"
@@ -156,39 +152,24 @@ graph TB
         BTN_POWER[Power Button]
     end
     
-    subgraph "Status LED"
-        WS2812[WS2812 RGB LED]
-    end
+    %% Power connections via buck converter
+    SC1 --> BUCK_12V
+    SC5 --> BUCK_GND
+    BUCK_5V --> ESP_5V
+    BUCK_GND --> ESP_GND
     
-    %% Power connections
-    ESP_3V3 --> VA
-    ESP_GND --> GND_A
-    SC4 --> VB
-    SC4 --> ESP_5V
-    SC5 --> GND_B
-    SC5 --> ESP_GND
-    
-    %% Signal connections
-    GPIO0 --> OE_A
-    GPIO1 --> A1
-    GPIO2 --> A2
-    GPIO6 --> A3
-    
-    %% Level shifter to stock connector
-    B1 --> SC7
-    B2 --> SC2
-    SC8 --> B3
+    %% Direct signal connections (3.3V safe)
+    GPIO1 --> SC7
+    GPIO21 --> SC2
+    SC8 --> GPIO0
     
     %% Button connections (active low with pullups)
-    BTN_MODE --> GPIO3
-    BTN_FILTER --> GPIO4
-    BTN_POWER --> GPIO7
-    GPIO3 --> ESP_GND
-    GPIO4 --> ESP_GND
-    GPIO7 --> ESP_GND
-    
-    %% LED connection
-    GPIO8 --> WS2812
+    BTN_MODE --> GPIO18
+    BTN_FILTER --> GPIO20
+    BTN_POWER --> GPIO19
+    GPIO18 --> ESP_GND
+    GPIO20 --> ESP_GND
+    GPIO19 --> ESP_GND
     
     %% Direct connections to PCA9685
     subgraph "PCA9685 PWM Controller"
@@ -197,34 +178,31 @@ graph TB
         PCA_OE[OE Pin]
     end
     
-    GPIO14 --> PCA_SDA
-    GPIO15 --> PCA_SCL
-    GPIO18 --> PCA_OE
+    GPIO22 --> PCA_SDA
+    GPIO23 --> PCA_SCL
+    GPIO2 --> PCA_OE
     
-    style A1 fill:#9f9
-    style A2 fill:#9f9
-    style A3 fill:#99f
-    style B1 fill:#9f9
-    style B2 fill:#9f9
-    style B3 fill:#99f
-    style GPIO3 fill:#ffa
-    style GPIO4 fill:#ffa
-    style GPIO7 fill:#ffa
-    style GPIO14 fill:#aaf
-    style GPIO15 fill:#aaf
-    style GPIO18 fill:#aaf
+    style GPIO1 fill:#9f9
+    style GPIO21 fill:#9f9
+    style GPIO0 fill:#99f
+    style GPIO18 fill:#ffa
+    style GPIO20 fill:#ffa
+    style GPIO19 fill:#ffa
+    style GPIO22 fill:#aaf
+    style GPIO23 fill:#aaf
+    style GPIO2 fill:#aaf
 ```
 
 ### PCA9685 Board Connections
 ```mermaid
 graph TB
-    subgraph "ESP32-C6"
+    subgraph "Seeed Xiao ESP32-C6"
         ESP_3V3[3.3V]
         ESP_5V[5V]
         ESP_GND[GND]
-        ESP_SDA[GPIO14 - I2C SDA]
-        ESP_SCL[GPIO15 - I2C SCL]
-        ESP_OE[GPIO18 - PCA9685 OE]
+        ESP_SDA[GPIO22 - I2C SDA]
+        ESP_SCL[GPIO23 - I2C SCL]
+        ESP_OE[GPIO2 - PCA9685 OE]
     end
     
     subgraph "PCA9685 Board"
@@ -334,38 +312,35 @@ graph LR
 
 ### 1. Hardware Setup
 
-1. **Prepare the ESP32-C6**
+1. **Prepare the Seeed Xiao ESP32-C6**
    - Flash the ESPHome configuration
    - Solder headers if needed
 
-2. **Connect Level Shifter**
-   - Side A (3.3V side):
-     - VA → ESP32 3.3V
-     - A1 → GPIO1 (Fan PWM output)
-     - A2 → GPIO2 (ION enable output)
-     - A3 → GPIO6 (Fan feedback input)
-     - OE → GPIO0 (Output Enable)
-   - Side B (5V side):
-     - VB → 5V from stock connector
-     - B1 → Stock Pin 7 (Fan PWM)
-     - B2 → Stock Pin 2 (ION Enable)
-     - B3 → Stock Pin 8 (Fan Speed Signal)
+2. **Install Buck Converter**
+   - Connect 12V to 5V buck converter (LM2596 or similar, 2A+ rating)
+   - Input: Stock Pin 1 (12V) and Pin 5 (GND)
+   - Output: 5V rail for ESP32 and PCA9685
+   - Adjust output voltage to exactly 5.0V before connecting other components
 
-3. **Connect PCA9685**
-   - Connect I2C lines (SDA to GPIO14, SCL to GPIO15)
-   - Connect OE pin to GPIO18
-   - Supply 3.3V to VCC, 5V to V+
+3. **Connect Stock Signals (Direct Connection)**
+   - GPIO1 → Stock Pin 7 (Fan PWM - 3.3V safe)
+   - GPIO21 → Stock Pin 2 (ION Enable - 3.3V safe)
+   - GPIO0 → Stock Pin 8 (Fan Speed Signal - 3.3V safe)
+
+4. **Connect PCA9685**
+   - Connect I2C lines (SDA to GPIO22, SCL to GPIO23)
+   - Connect OE pin to GPIO2
+   - Supply 3.3V to VCC, 5V from buck converter to V+
    - Connect all LED cathodes to PWM channels as per diagram
 
-4. **Connect Stock Connector**
-   - All 5V signals go through level shifter
-   - 5V (Pin 4) → Board power and level shifter VB
-   - GND (Pin 5) → Board ground
+5. **Connect Stock Connector**
+   - 12V (Pin 1) → Buck converter input
+   - GND (Pin 5) → Buck converter ground and board ground
 
-5. **Connect Buttons**
-   - Power button → GPIO7 (active low)
-   - Mode button → GPIO3 (active low)
-   - Filter reset → GPIO4 (active low)
+6. **Connect Buttons**
+   - Power button → GPIO19 (active low)
+   - Mode button → GPIO18 (active low)
+   - Filter reset → GPIO20 (active low)
 
 ### 2. Software Configuration
 
@@ -494,15 +469,15 @@ automation:
 ## Troubleshooting
 
 ### LEDs not working
-1. Check I2C connections (SDA/SCL)
-2. Verify PCA9685 OE pin is connected to GPIO18
+1. Check I2C connections (SDA/SCL to GPIO22/GPIO23)
+2. Verify PCA9685 OE pin is connected to GPIO2
 3. Check PCA9685 is getting 5V power
 4. Run I2C scan to verify address (default 0x40)
 
 ### Fan not responding
-1. Verify level shifter is powered and OE connected
-2. Check fan PWM frequency (should be 4kHz)
-3. Measure voltage at fan PWM pin (should vary with speed)
+1. Check fan PWM frequency (should be 4kHz)
+2. Measure voltage at fan PWM pin (should vary with speed)
+3. Verify direct connection from GPIO1 to stock Pin 7
 
 ### Buttons not working
 1. Ensure buttons connect to ground when pressed
@@ -511,39 +486,37 @@ automation:
 
 ### Filter timers not working
 1. Timers only count when fan is running
-2. Check ESP32 is maintaining time properly
+2. Check Seeed Xiao ESP32-C6 is maintaining time properly
 3. Verify global variables are set to restore_value: yes
 
 ## Technical Reference
 
 ### GPIO Pin Assignments
 
-#### ESP32-C6 GPIO Usage
+#### Seeed Xiao ESP32-C6 GPIO Usage
 | GPIO | Function | Direction | Notes |
 |------|----------|-----------|-------|
-| GPIO0 | Level Shifter Output Enable | Output | Active High |
+| GPIO0 | Fan Monitor ADC | Input | Voltage feedback from fan → Stock Pin 8 |
 | GPIO1 | Fan PWM Control | Output | 4kHz PWM signal → Stock Pin 7 |
-| GPIO2 | Ionizer Enable | Output | Active High → Stock Pin 2 |
-| GPIO3 | Mode Switch | Input | Pull-up, Active Low - Short: cycle speeds, Long: toggle ion |
-| GPIO4 | Filter Reset Switch | Input | Pull-up, Active Low - Short: clear LED, Long: reset timers |
-| GPIO6 | Fan Monitor ADC | Input | Voltage feedback from fan → Stock Pin 8 |
-| GPIO7 | Power Switch | Input | Pull-up, Active Low - Short: toggle fan, Long: dim LEDs, 30s: reboot |
-| GPIO8 | WS2812 RGB Status LED | Output | Data line for status LED |
-| GPIO14 | I2C SDA | I/O | PCA9685 communication |
-| GPIO15 | I2C SCL | Output | PCA9685 communication |
-| GPIO18 | PCA9685 Output Enable | Output | Active Low |
+| GPIO2 | PCA9685 Output Enable | Output | Active Low |
+| GPIO18 | Mode Switch | Input | Pull-up, Active Low - Short: cycle speeds, Long: toggle ion |
+| GPIO19 | Power Switch | Input | Pull-up, Active Low - Short: toggle fan, Long: dim LEDs, 30s: reboot |
+| GPIO20 | Filter Reset Switch | Input | Pull-up, Active Low - Short: clear LED, Long: reset timers |
+| GPIO21 | Ionizer Enable | Output | Active High → Stock Pin 2 |
+| GPIO22 | I2C SDA | I/O | PCA9685 communication |
+| GPIO23 | I2C SCL | Output | PCA9685 communication |
 
-#### Stock Connector to ESP32 Mapping
-| Stock Pin | Function | Voltage | ESP32 Connection |
+#### Stock Connector to Seeed Xiao ESP32-C6 Mapping
+| Stock Pin | Function | Voltage | Seeed Xiao ESP32-C6 Connection |
 |-----------|----------|---------|------------------|
-| Pin 1 | 12V | 12V | Board power input (not used) |
-| Pin 2 | ION Enable | 5V | GPIO2 (via level shifter) |
+| Pin 1 | 12V | 12V - 2A | Buck converter input (primary power) |
+| Pin 2 | ION Enable | 3.3V Safe | GPIO21 (direct) |
 | Pin 3 | N/C | - | Not connected |
-| Pin 4 | 5V | 5V | Board 5V rail |
-| Pin 5 | GND | 0V | Board ground |
+| Pin 4 | 5V | 5V - 200mA | Not used (insufficient current) |
+| Pin 5 | GND | 0V | Buck converter ground and board ground |
 | Pin 6 | N/C | - | Not connected |
-| Pin 7 | Fan PWM | 5V | GPIO1 (via level shifter) |
-| Pin 8 | Fan Speed Signal | 5V | GPIO6 (via voltage divider) |
+| Pin 7 | Fan PWM | 3.3V Safe | GPIO1 (direct) |
+| Pin 8 | Fan Speed Signal | 3.3V Safe | GPIO0 (direct) |
 
 ### PCA9685 Channel Assignments
 | Channel | LED Function | Color/Type |
@@ -585,6 +558,7 @@ automation:
 #### Measured Values from Stock PCB
 - **PWM Frequency**: 3.910kHz (measured from original board)
 - **Fan Speed Feedback Voltages**:
+  - Level 0 (auto): 0.500V @ 10% duty cycle
   - Level 1: 0.500V @ 22% duty cycle
   - Level 2: 0.810V @ 28% duty cycle
   - Level 3: 1.131V @ 38% duty cycle
@@ -649,4 +623,4 @@ This project is provided as-is for educational and personal use. Use at your own
 
 - ESPHome team for the amazing platform
 - Home Assistant community
-- Original Winix engineers for a great air purifier design
+- Original Winix engineers for a simple, easy to understand air purifier design!

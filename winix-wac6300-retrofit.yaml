@@ -1,15 +1,15 @@
 # Winix WAC6300 Smart Air Purifier Retrofit Configuration
 packages:
   - !include common/common.yaml
-  - !include common/supermini-esp32c6.yaml
+  - !include common/xiao-esp32c6.yaml
   - !include common/common-wifi.yaml
 
 wifi:
   output_power: 16
 
 esphome:
-  name: thread-air-purifier-livingroom
-  friendly_name: Livingroom Smart Air Purifier
+  name: thread-air-purifier-bedroom
+  friendly_name: Bedroom Smart Air Purifier
   on_boot:
     - priority: 600
       then:
@@ -91,13 +91,13 @@ esphome:
               if (id(sleep_mode_switch).state) {
                 id(sleep_mode_led).turn_on().perform();
               }
-              
+
               if (id(ionizer_switch).state) {
                 id(ion_led).turn_on().perform();
                 id(ion_led_2).turn_on().perform();
                 id(ion_led_3).turn_on().perform();
               }
-              
+
               int odor_level = id(odor_level_display).state;
               if (odor_level >= 1) id(odor_1_led).turn_on().perform();
               if (odor_level >= 2) id(odor_2_led).turn_on().perform();
@@ -105,20 +105,16 @@ esphome:
               if (odor_level >= 4) id(odor_4_led).turn_on().perform();
               if (odor_level >= 5) id(odor_5_led).turn_on().perform();
             }
-            
+
             if (id(fan_was_on)) {
               auto call = id(air_purifier_fan).turn_on();
               call.set_speed(id(last_fan_speed));
               call.perform();
               ESP_LOGI("boot", "Restored fan to %d%% speed", id(last_fan_speed));
             }
-            
+
             ESP_LOGI("boot", "System state restored");
         - script.execute: check_filter_status
-
-external_components:
-  - source: github://PhracturedBlue/c6_adc
-    refresh: 0s
 
 globals:
   - id: leds_dimmed
@@ -155,8 +151,8 @@ globals:
     initial_value: 'false'
 
 i2c:
-  sda: GPIO14
-  scl: GPIO15
+  sda: GPIO22
+  scl: GPIO23
   scan: true
   id: bus_a
 
@@ -166,29 +162,23 @@ pca9685:
     frequency: 1000Hz
 
 output:
-  - platform: gpio
-    pin: 
-      number: GPIO0
-      mode:
-        output: true
-    id: level_shifter_oe
-    
+
   - platform: ledc
     pin: GPIO1
     id: fan_control_pwm
     frequency: 4000Hz
     channel: 0
-    
+
   - platform: gpio
     pin:
-      number: GPIO2
+      number: GPIO21
       mode:
         output: true
     id: ion_enable
-    
+
   - platform: gpio
     pin:
-      number: GPIO18
+      number: GPIO2
       mode:
         output: true
       inverted: true  # Active LOW
@@ -198,108 +188,101 @@ output:
     id: led_auto
     channel: 0
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_sleep
     channel: 1
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_filter_change
     channel: 2
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_odor_5
     channel: 3
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_odor_4
     channel: 4
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_odor_3
     channel: 5
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_odor_2
     channel: 6
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_odor_1
     channel: 7
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_ion
     channel: 8
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_speed_1
     channel: 9
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_speed_2
     channel: 10
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_speed_3
     channel: 11
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_speed_4
     channel: 12
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_speed_5
     channel: 13
     pca9685_id: pca9685_hub
-    
+
   # Additional ION LED outputs on channels 14 and 15
   - platform: pca9685
     id: led_ion_2
     channel: 14
     pca9685_id: pca9685_hub
-    
+
   - platform: pca9685
     id: led_ion_3
     channel: 15
     pca9685_id: pca9685_hub
 
 light:
-  - platform: esp32_rmt_led_strip
-    rgb_order: GRB
-    pin: GPIO8
-    num_leds: 1
-    chipset: ws2812
-    name: "RGB LED"
-    id: status_led
-    default_transition_length: 0s
-    color_correct: [100%, 100%, 100%]
-    
   - platform: monochromatic
     name: "Auto Mode LED"
+    entity_category: diagnostic
     output: led_auto
     id: auto_mode_led
     default_transition_length: 500ms
-    
+
   - platform: monochromatic
     name: "Sleep Mode LED"
+    entity_category: diagnostic
     output: led_sleep
     id: sleep_mode_led
     default_transition_length: 500ms
-    
+
   - platform: monochromatic
     name: "Filter Change LED"
+    entity_category: diagnostic
     output: led_filter_change
     id: filter_change_led
     default_transition_length: 500ms
@@ -308,44 +291,45 @@ light:
           name: "Warning Pulse"
           transition_length: 1s
           update_interval: 2s
-    
+
   - platform: monochromatic
     name: "Speed 1 LED"
     output: led_speed_1
     id: speed_1_led
     internal: true
     default_transition_length: 200ms
-    
+
   - platform: monochromatic
     name: "Speed 2 LED"
     output: led_speed_2
     id: speed_2_led
     internal: true
     default_transition_length: 200ms
-    
+
   - platform: monochromatic
     name: "Speed 3 LED"
     output: led_speed_3
     id: speed_3_led
     internal: true
     default_transition_length: 200ms
-    
+
   - platform: monochromatic
     name: "Speed 4 LED"
     output: led_speed_4
     id: speed_4_led
     internal: true
     default_transition_length: 200ms
-    
+
   - platform: monochromatic
     name: "Speed 5 LED"
     output: led_speed_5
     id: speed_5_led
     internal: true
     default_transition_length: 200ms
-    
+
   - platform: monochromatic
     name: "Ion LED"
+    entity_category: diagnostic
     output: led_ion
     id: ion_led
     default_transition_length: 300ms
@@ -355,49 +339,49 @@ light:
     on_turn_off:
       - light.turn_off: ion_led_2
       - light.turn_off: ion_led_3
-    
+
   - platform: monochromatic
     name: "Ion LED 2"
     output: led_ion_2
     id: ion_led_2
     internal: true
     default_transition_length: 300ms
-    
+
   - platform: monochromatic
     name: "Ion LED 3"
     output: led_ion_3
     id: ion_led_3
     internal: true
     default_transition_length: 300ms
-    
+
   - platform: monochromatic
     name: "Odor 1 LED"
     output: led_odor_1
     id: odor_1_led
     internal: true
     default_transition_length: 300ms
-    
+
   - platform: monochromatic
     name: "Odor 2 LED"
     output: led_odor_2
     id: odor_2_led
     internal: true
     default_transition_length: 300ms
-    
+
   - platform: monochromatic
     name: "Odor 3 LED"
     output: led_odor_3
     id: odor_3_led
     internal: true
     default_transition_length: 300ms
-    
+
   - platform: monochromatic
     name: "Odor 4 LED"
     output: led_odor_4
     id: odor_4_led
     internal: true
     default_transition_length: 300ms
-    
+
   - platform: monochromatic
     name: "Odor 5 LED"
     output: led_odor_5
@@ -413,7 +397,7 @@ binary_sensor:
     lambda: |-
       const int carbon_filter_lifetime = 7776000;  // 90 days
       return id(carbon_filter_runtime) >= carbon_filter_lifetime;
-      
+
   - platform: template
     name: "HEPA Filter Needs Replacement"
     id: hepa_filter_alert
@@ -421,16 +405,17 @@ binary_sensor:
     lambda: |-
       const int hepa_filter_lifetime = 31536000;  // 365 days
       return id(hepa_filter_runtime) >= hepa_filter_lifetime;
-      
-  # Mode Switch (GPIO3)
+
+  # Mode Switch (GPIO18)
   - platform: gpio
     pin:
-      number: GPIO3
+      number: GPIO18
       mode:
         input: true
         pullup: true
       inverted: true  # Trigger when grounded
     name: "Mode Switch"
+    entity_category: diagnostic
     id: sw1
     filters:
       - delayed_on: 10ms
@@ -449,7 +434,7 @@ binary_sensor:
                 id(sleep_mode_switch).turn_off();
                 ESP_LOGD("mode", "Sleep mode disabled due to speed change");
               }
-              
+
               // Cycle through original speeds: Off -> 20% -> 28% -> 38% -> 54% -> Off
               if (!id(air_purifier_fan).state) {
                 // Fan is off, turn on at speed 1 (20%)
@@ -493,16 +478,17 @@ binary_sensor:
               id(mode_long_press_triggered) = true;
           - logger.log: "Mode switch long pressed - toggling ionizer"
           - switch.toggle: ionizer_switch
-    
-  # Filter Reset Switch (GPIO4)
+
+  # Filter Reset Switch (GPIO20)
   - platform: gpio
     pin:
-      number: GPIO4
+      number: GPIO20
       mode:
         input: true
         pullup: true
       inverted: true  # Trigger when grounded
     name: "Filter Reset Switch"
+    entity_category: diagnostic
     id: sw2
     filters:
       - delayed_on: 10ms
@@ -550,16 +536,17 @@ binary_sensor:
           - button.press: reset_carbon_filter
           - button.press: reset_hepa_filter
           - logger.log: "Filter timers reset complete"
-    
-  # Power Switch (GPIO7)
+
+  # Power Switch (GPIO19)
   - platform: gpio
     pin:
-      number: GPIO7
+      number: GPIO19
       mode:
         input: true
         pullup: true
       inverted: true  # Trigger when grounded
     name: "Power Switch"
+    entity_category: diagnostic
     id: sw3
     filters:
       - delayed_on: 10ms
@@ -583,14 +570,14 @@ binary_sensor:
                 call.perform();
                 ESP_LOGD("power", "Fan turned ON to speed %d%%", id(last_fan_speed));
               }
-              
+
               // If we're turning the fan on and LEDs were dimmed, restore them
               if (id(air_purifier_fan).state && id(leds_dimmed)) {
                 id(leds_dimmed) = false;
-                
+
                 // Update LEDs based on current system state (they'll use the reset 100% brightness)
                 id(update_speed_leds).execute();
-                
+
                 // Restore other LED states based on their switches/modes
                 if (id(auto_mode_switch).state) {
                   id(auto_mode_led).turn_on().perform();
@@ -603,7 +590,7 @@ binary_sensor:
                   id(ion_led_2).turn_on().perform();
                   id(ion_led_3).turn_on().perform();
                 }
-                
+
                 // Restore odor LEDs based on current setting
                 int odor_level = id(odor_level_display).state;
                 if (odor_level >= 1) id(odor_1_led).turn_on().perform();
@@ -611,7 +598,7 @@ binary_sensor:
                 if (odor_level >= 3) id(odor_3_led).turn_on().perform();
                 if (odor_level >= 4) id(odor_4_led).turn_on().perform();
                 if (odor_level >= 5) id(odor_5_led).turn_on().perform();
-                
+
                 ESP_LOGD("leds", "LED display restored after power on");
               }
             }
@@ -629,7 +616,7 @@ binary_sensor:
                 // Turning LEDs off - just turn off what's currently on
                 // The states are preserved by the underlying systems
                 id(leds_dimmed) = true;
-                
+
                 // Turn off all LEDs (they'll remember their state internally)
                 id(auto_mode_led).turn_off().perform();
                 id(sleep_mode_led).turn_off().perform();
@@ -647,15 +634,15 @@ binary_sensor:
                 id(odor_3_led).turn_off().perform();
                 id(odor_4_led).turn_off().perform();
                 id(odor_5_led).turn_off().perform();
-                
+
                 ESP_LOGD("leds", "LED display turned OFF");
               } else {
                 // Restore LED states
                 id(leds_dimmed) = false;
-                
+
                 // Update LEDs based on current system state
                 id(update_speed_leds).execute();
-                
+
                 // Restore other LED states based on their switches/modes
                 if (id(auto_mode_switch).state) {
                   id(auto_mode_led).turn_on().perform();
@@ -668,7 +655,7 @@ binary_sensor:
                   id(ion_led_2).turn_on().perform();
                   id(ion_led_3).turn_on().perform();
                 }
-                
+
                 // Restore odor LEDs based on current setting
                 int odor_level = id(odor_level_display).state;
                 if (odor_level >= 1) id(odor_1_led).turn_on().perform();
@@ -676,7 +663,7 @@ binary_sensor:
                 if (odor_level >= 3) id(odor_3_led).turn_on().perform();
                 if (odor_level >= 4) id(odor_4_led).turn_on().perform();
                 if (odor_level >= 5) id(odor_5_led).turn_on().perform();
-                
+
                 ESP_LOGD("leds", "LED display restored");
               }
       - timing:
@@ -760,24 +747,23 @@ binary_sensor:
           - button.press: restart_button
 
 sensor:
-  - platform: c6_adc
-    pin: GPIO6
+  - platform: adc
+    pin: GPIO0
     name: "Fan Monitor Voltage"
     id: fan_monitor
-    internal: true
     update_interval: 1s
     attenuation: 12dB
     filters:
       - sliding_window_moving_average:
           window_size: 3
           send_every: 1
-    
+
   - platform: template
     name: "Fan Status"
     lambda: |-
       float voltage = id(fan_monitor).state;
       if (isnan(voltage)) return 0;
-      
+
       if (voltage > 2.5) {
         return 0;
       } else if (voltage < 1.2) {
@@ -792,7 +778,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 1s
     icon: "mdi:fan"
-    
+
   - platform: template
     name: "Carbon Filter Life"
     id: carbon_filter_life
@@ -806,7 +792,7 @@ sensor:
     accuracy_decimals: 1
     update_interval: 60s
     icon: "mdi:air-filter"
-    
+
   - platform: template
     name: "HEPA Filter Life"
     id: hepa_filter_life
@@ -820,7 +806,7 @@ sensor:
     accuracy_decimals: 1
     update_interval: 60s
     icon: "mdi:air-filter"
-    
+
   - platform: template
     name: "Carbon Filter Days Remaining"
     lambda: |-
@@ -832,7 +818,7 @@ sensor:
     accuracy_decimals: 0
     update_interval: 60s
     icon: "mdi:calendar-clock"
-    
+
   - platform: template
     name: "HEPA Filter Days Remaining"
     lambda: |-
@@ -854,11 +840,11 @@ script:
           id(speed_3_led).turn_off().perform();
           id(speed_4_led).turn_off().perform();
           id(speed_5_led).turn_off().perform();
-          
+
           if (id(leds_dimmed) || !id(air_purifier_fan).state) return;
-          
+
           int speed = id(air_purifier_fan).speed;
-          
+
           // Determine the correct brightness to use
           float brightness = 1.0;  // Default to full brightness
           if (id(sleep_mode_switch).state) {
@@ -866,35 +852,35 @@ script:
           } else {
             brightness = id(global_led_brightness).state / 100.0;  // Global brightness setting
           }
-          
+
           if (speed > 0) {
             auto call = id(speed_1_led).turn_on();
             call.set_brightness(brightness);
             call.perform();
           }
-          
+
           if (speed >= 28) {
             auto call = id(speed_2_led).turn_on();
             call.set_brightness(brightness);
             call.perform();
           }
-          
+
           if (speed >= 38) {
             auto call = id(speed_3_led).turn_on();
             call.set_brightness(brightness);
             call.perform();
           }
-          
+
           if (speed >= 54) {
             auto call = id(speed_4_led).turn_on();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(speed_5_led).turn_on();
             call.set_brightness(brightness);
             call.perform();
           }
-          
+
   - id: update_odor_leds
     parameters:
       level: int
@@ -905,22 +891,22 @@ script:
           id(odor_3_led).turn_off().perform();
           id(odor_4_led).turn_off().perform();
           id(odor_5_led).turn_off().perform();
-          
+
           if (level >= 1) id(odor_1_led).turn_on().perform();
           if (level >= 2) id(odor_2_led).turn_on().perform();
           if (level >= 3) id(odor_3_led).turn_on().perform();
           if (level >= 4) id(odor_4_led).turn_on().perform();
           if (level >= 5) id(odor_5_led).turn_on().perform();
-          
+
   - id: check_filter_status
     then:
       - lambda: |-
           const int carbon_filter_lifetime = 7776000;  // 90 days
           const int hepa_filter_lifetime = 31536000;   // 365 days
-          
+
           bool carbon_expired = id(carbon_filter_runtime) >= carbon_filter_lifetime;
           bool hepa_expired = id(hepa_filter_runtime) >= hepa_filter_lifetime;
-          
+
           if (carbon_expired || hepa_expired) {
             if (!id(filter_change_led).current_values.is_on() && !id(leds_dimmed)) {
               id(filter_change_led).turn_on().perform();
@@ -945,13 +931,6 @@ fan:
     speed_count: 100
     restore_mode: ALWAYS_OFF
     on_turn_on:
-      - output.turn_on: level_shifter_oe
-      - light.turn_on:
-          id: status_led
-          brightness: 30%
-          red: 0%
-          green: 100%
-          blue: 0%
       - lambda: |-
           id(leds_dimmed) = false;
           id(global_led_brightness).publish_state(100);
@@ -959,11 +938,9 @@ fan:
       - script.execute: update_speed_leds
       - logger.log: "Fan turned ON - LED brightness reset to 100%"
     on_turn_off:
-      - output.turn_off: level_shifter_oe
       - output.set_level:
           id: fan_control_pwm
           level: 0
-      - light.turn_off: status_led
       - lambda: |-
           id(leds_dimmed) = false;
           id(fan_was_on) = false;
@@ -973,14 +950,14 @@ fan:
       - lambda: |-
           int speed = id(air_purifier_fan).speed;
           float pwm_level = speed / 100.0;
-          
+
           id(fan_control_pwm).set_level(pwm_level);
           ESP_LOGD("fan", "Speed set to %d percent", speed);
-          
+
           if (speed > 0) {
             id(last_fan_speed) = speed;
           }
-          
+
           // Check if we're no longer at sleep speed (10%) while sleep mode is on
           if (id(sleep_mode_switch).state && speed != 10) {
             // Turn off sleep mode since we're not at sleep speed anymore
@@ -1008,7 +985,7 @@ switch:
       - light.turn_off: ion_led_2
       - light.turn_off: ion_led_3
       - logger.log: "Ionizer turned OFF"
-      
+
   - platform: template
     name: "Auto Mode"
     id: auto_mode_switch
@@ -1021,7 +998,7 @@ switch:
     turn_off_action:
       - light.turn_off: auto_mode_led
       - logger.log: "Auto mode turned OFF"
-      
+
   - platform: template
     name: "Sleep Mode"
     id: sleep_mode_switch
@@ -1037,98 +1014,98 @@ switch:
       # Dim all LEDs to 25% in sleep mode
       - lambda: |-
           float sleep_brightness = 0.25;
-          
+
           // Set all LED brightnesses to 25%
           if (id(auto_mode_led).current_values.is_on()) {
             auto call = id(auto_mode_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           auto call = id(sleep_mode_led).make_call();
           call.set_brightness(sleep_brightness);
           call.perform();
-          
+
           if (id(filter_change_led).current_values.is_on()) {
             call = id(filter_change_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(speed_1_led).current_values.is_on()) {
             call = id(speed_1_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(speed_2_led).current_values.is_on()) {
             call = id(speed_2_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(speed_3_led).current_values.is_on()) {
             call = id(speed_3_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(speed_4_led).current_values.is_on()) {
             call = id(speed_4_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(speed_5_led).current_values.is_on()) {
             call = id(speed_5_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(ion_led).current_values.is_on()) {
             call = id(ion_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
-            
+
             call = id(ion_led_2).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
-            
+
             call = id(ion_led_3).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(odor_1_led).current_values.is_on()) {
             call = id(odor_1_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(odor_2_led).current_values.is_on()) {
             call = id(odor_2_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(odor_3_led).current_values.is_on()) {
             call = id(odor_3_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(odor_4_led).current_values.is_on()) {
             call = id(odor_4_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           if (id(odor_5_led).current_values.is_on()) {
             call = id(odor_5_led).make_call();
             call.set_brightness(sleep_brightness);
             call.perform();
           }
-          
+
           ESP_LOGD("sleep", "All LEDs dimmed to 25%% for sleep mode");
     turn_off_action:
       - light.turn_off: sleep_mode_led
@@ -1136,98 +1113,99 @@ switch:
       # Restore LED brightness when exiting sleep mode
       - lambda: |-
           float normal_brightness = id(global_led_brightness).state / 100.0;
-          
+
           // Restore all LED brightnesses to global setting
           if (id(auto_mode_led).current_values.is_on()) {
             auto call = id(auto_mode_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(filter_change_led).current_values.is_on()) {
             auto call = id(filter_change_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(speed_1_led).current_values.is_on()) {
             auto call = id(speed_1_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(speed_2_led).current_values.is_on()) {
             auto call = id(speed_2_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(speed_3_led).current_values.is_on()) {
             auto call = id(speed_3_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(speed_4_led).current_values.is_on()) {
             auto call = id(speed_4_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(speed_5_led).current_values.is_on()) {
             auto call = id(speed_5_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(ion_led).current_values.is_on()) {
             auto call = id(ion_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
-            
+
             call = id(ion_led_2).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
-            
+
             call = id(ion_led_3).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(odor_1_led).current_values.is_on()) {
             auto call = id(odor_1_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(odor_2_led).current_values.is_on()) {
             auto call = id(odor_2_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(odor_3_led).current_values.is_on()) {
             auto call = id(odor_3_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(odor_4_led).current_values.is_on()) {
             auto call = id(odor_4_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           if (id(odor_5_led).current_values.is_on()) {
             auto call = id(odor_5_led).make_call();
             call.set_brightness(normal_brightness);
             call.perform();
           }
-          
+
           ESP_LOGD("sleep", "LED brightness restored to %.0f%%", id(global_led_brightness).state);
-      
+
   - platform: template
     name: "LED Display"
+    entity_category: config
     id: led_display_switch
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
@@ -1276,10 +1254,11 @@ switch:
             id(odor_4_led).turn_off().perform();
             id(odor_5_led).turn_off().perform();
           }
-  
+
   - platform: template
     name: "LED Test Mode"
     id: led_test_switch
+    entity_category: diagnostic
     optimistic: true
     restore_mode: ALWAYS_OFF
     icon: "mdi:test-tube"
@@ -1354,12 +1333,12 @@ switch:
           id(odor_3_led).turn_off().perform();
           id(odor_4_led).turn_off().perform();
           id(odor_5_led).turn_off().perform();
-          
+
           // Only restore if LEDs aren't dimmed
           if (!id(leds_dimmed)) {
             // Restore based on current system state
             id(update_speed_leds).execute();
-            
+
             if (id(auto_mode_switch).state) {
               id(auto_mode_led).turn_on().perform();
             }
@@ -1371,7 +1350,7 @@ switch:
               id(ion_led_2).turn_on().perform();
               id(ion_led_3).turn_on().perform();
             }
-            
+
             // Restore odor LEDs based on current setting
             int odor_level = id(odor_level_display).state;
             if (odor_level >= 1) id(odor_1_led).turn_on().perform();
@@ -1379,7 +1358,7 @@ switch:
             if (odor_level >= 3) id(odor_3_led).turn_on().perform();
             if (odor_level >= 4) id(odor_4_led).turn_on().perform();
             if (odor_level >= 5) id(odor_5_led).turn_on().perform();
-            
+
             // Check filter status
             const int carbon_filter_lifetime = 7776000;
             const int hepa_filter_lifetime = 31536000;
@@ -1393,6 +1372,7 @@ switch:
 number:
   - platform: template
     name: "Odor Level Display"
+    entity_category: diagnostic
     id: odor_level_display
     min_value: 0
     max_value: 5
@@ -1405,9 +1385,10 @@ number:
         - script.execute:
             id: update_odor_leds
             level: !lambda 'return (int)x;'
-            
+
   - platform: template
-    name: "All LEDs Brightness"
+    name: "LEDs Brightness"
+    entity_category: config
     id: global_led_brightness
     min_value: 0
     max_value: 100
@@ -1420,71 +1401,71 @@ number:
       then:
         - lambda: |-
             float brightness = x / 100.0;
-            
+
             auto call = id(auto_mode_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(sleep_mode_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(filter_change_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(speed_1_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(speed_2_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(speed_3_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(speed_4_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(speed_5_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(ion_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(ion_led_2).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(ion_led_3).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(odor_1_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(odor_2_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(odor_3_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(odor_4_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             call = id(odor_5_led).make_call();
             call.set_brightness(brightness);
             call.perform();
-            
+
             ESP_LOGD("leds", "Set all LED brightness to %.0f%%", x);
 
 select:
@@ -1555,7 +1536,7 @@ button:
           id(carbon_filter_runtime) = 0;
           ESP_LOGI("filter", "Carbon filter timer reset");
       - script.execute: check_filter_status
-      
+
   - platform: template
     name: "Reset HEPA Filter"
     id: reset_hepa_filter
