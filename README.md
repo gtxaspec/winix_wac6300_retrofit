@@ -2,6 +2,12 @@
 
 Transform your Winix WAC6300 or WAC5500 air purifier into a smart home device with full Home Assistant integration while maintaining all original functionality.
 
+> [!WARNING]
+> This is a WORK IN PROGRESS
+
+<img width="240" height="240" alt="image" src="https://github.com/user-attachments/assets/6b74b872-8bf3-4891-8ce8-cd988fde8654" />
+<img width="240" height="240" alt="image" src="https://github.com/user-attachments/assets/5e34d7c6-1b6c-4561-8797-3b6f25a1859b" />
+
 ## ⚠️ SAFETY WARNING ⚠️
 
 **HIGH VOLTAGE HAZARD - RISK OF DEATH OR SERIOUS INJURY**
@@ -15,8 +21,8 @@ The Winix WAC6300/WAC5500 power supply contains:
 - **ALWAYS UNPLUG** the unit and wait 10 minutes before working on it
 - **NEVER** open or modify the power supply module
 - **ONLY** work on the control PCB replacement as described
-- The 8-pin connector carries only 5V and 12V, but the cable comes from the high voltage power supply - handle with care
-- Keep the power supply module closed - it contains lethal voltages
+- The 8-pin connector carries only 5V and 12V, but the cable comes from the high voltage power supply, handle with care
+- Keep the power supply module closed, it contains lethal voltages
 - Use insulated tools
 - Never work on the device while powered
 - If you're not comfortable working near high voltage equipment, seek professional help
@@ -67,12 +73,30 @@ These features may be added in future versions of the project.
 This retrofit has been tested and confirmed to work with the following Winix air purifier models:
 
 - **WAC6300** - 4-speed air purifier with ionizer
-- **WAC5500** - 4-speed air purifier with ionizer
+- **WAC5500** - 4-speed air purifier with ionizer  
+- **WAC5500-2** - 4-speed air purifier with ionizer (variant model)
 
-Both models share the same internal connector pinout and power supply configuration, making them compatible with this retrofit design.
+All models share the same basic internal connector pinout and power supply configuration, making them compatible with this retrofit design.
 
 ### Model Differences
-The WAC6300 and WAC5500 are cosmetically identical and use the same internal electronics and connector configuration. The retrofit maintains full compatibility with both models' original functionality.
+
+**WAC6300 and WAC5500 (Standard Models)**
+- Share identical electronics and connector configuration
+- 12V power supply on Pin 1 of connector
+- Standard PWM ranges and ionizer control
+
+**WAC5500-2 (Variant Model)**
+- **Different PWM Frequency**: Operates at 2000.5 kHz (instead of standard 3.910 kHz)
+- **Modified Ionizer Control**: Pin 1 carries 4.723V DC (instead of 12V) and controls the ionizer feature directly
+- **Different PWM Ranges**:
+  - Sleep Mode: 14% (vs 10% on standard models)
+  - Speed 1: 17% (vs 20% on standard models)
+  - Speed 2: 19% (vs 28% on standard models)
+  - Speed 3: 21% (vs 38% on standard models)
+  - Speed 4 (Turbo): 33% (vs 54% on standard models)
+
+**Configuration Notes for WAC5500-2**
+All PWM speeds and frequency can be adjusted through the Home Assistant interface to match your specific model requirements. The default configuration targets the standard WAC6300/WAC5500 models, but users with the WAC5500-2 variant can easily adjust the values in the config category within Home Assistant without needing to reflash firmware.
 
 ## Technical Specifications
 
@@ -368,11 +392,14 @@ graph LR
 | Filter Reset | Clear filter LED | - | Reset both filter timers |
 
 ### Speed Settings
-- **Speed 1**: 20% PWM (Low)
-- **Speed 2**: 28% PWM (Medium-Low)
-- **Speed 3**: 38% PWM (Medium-High)  
-- **Speed 4**: 54% PWM (High)
-- **Sleep Mode**: 10% PWM (Ultra quiet, LEDs dimmed to 25%)
+- **Speed 1**: 20% PWM (Low) - *Configurable in Home Assistant*
+- **Speed 2**: 28% PWM (Medium-Low) - *Configurable in Home Assistant*
+- **Speed 3**: 38% PWM (Medium-High) - *Configurable in Home Assistant*
+- **Speed 4**: 54% PWM (High) - *Configurable in Home Assistant*
+- **Sleep Mode**: 10% PWM (Ultra quiet, LEDs dimmed to 25%) - *Configurable in Home Assistant*
+- **PWM Frequency**: 2001.5 Hz (default) - *Configurable in Home Assistant*
+
+**Note**: All PWM speeds and frequency can be adjusted through the Home Assistant configuration interface to match different model variants (such as WAC5500-2) without requiring firmware changes.
 
 ### LED Indicators
 
